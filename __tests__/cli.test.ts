@@ -1,7 +1,7 @@
 import * as fs from 'fs';
 import * as path from 'path';
 import * as os from 'os';
-import { parseArgs, loadConfig, mergeConfigAndArgs, validateOptions } from '../src/cli';
+import { parseArgs, loadConfig, mergeConfigAndArgs, validateOptions, detectAppName } from '../src/cli';
 import {
   type PhaseResult,
   printPhaseHeader,
@@ -205,6 +205,79 @@ describe('loadConfig', () => {
 });
 
 // ---------------------------------------------------------------------------
+// detectAppName
+// ---------------------------------------------------------------------------
+
+describe('detectAppName', () => {
+  let tempDir: string;
+
+  beforeEach(() => {
+    tempDir = fs.mkdtempSync(path.join(os.tmpdir(), 'cli-detect-'));
+  });
+
+  afterEach(() => {
+    fs.rmSync(tempDir, { recursive: true, force: true });
+  });
+
+  it('should detect appName from package.json in target directory', () => {
+    fs.writeFileSync(
+      path.join(tempDir, 'package.json'),
+      JSON.stringify({ name: 'my-ember-app' }),
+      'utf-8',
+    );
+    expect(detectAppName(tempDir)).toBe('my-ember-app');
+  });
+
+  it('should detect appName from parent directory package.json', () => {
+    const subDir = path.join(tempDir, 'app');
+    fs.mkdirSync(subDir);
+    fs.writeFileSync(
+      path.join(tempDir, 'package.json'),
+      JSON.stringify({ name: 'parent-app' }),
+      'utf-8',
+    );
+    expect(detectAppName(subDir)).toBe('parent-app');
+  });
+
+  it('should return empty string when no package.json found', () => {
+    const isolated = fs.mkdtempSync(path.join(os.tmpdir(), 'cli-no-pkg-'));
+    try {
+      expect(detectAppName(isolated)).toBe('');
+    } finally {
+      fs.rmSync(isolated, { recursive: true, force: true });
+    }
+  });
+
+  it('should skip package.json without name field', () => {
+    const child = path.join(tempDir, 'child');
+    fs.mkdirSync(child);
+    fs.writeFileSync(
+      path.join(child, 'package.json'),
+      JSON.stringify({ version: '1.0.0' }),
+      'utf-8',
+    );
+    fs.writeFileSync(
+      path.join(tempDir, 'package.json'),
+      JSON.stringify({ name: 'fallback-app' }),
+      'utf-8',
+    );
+    expect(detectAppName(child)).toBe('fallback-app');
+  });
+
+  it('should skip malformed package.json and keep walking up', () => {
+    const child = path.join(tempDir, 'child');
+    fs.mkdirSync(child);
+    fs.writeFileSync(path.join(child, 'package.json'), '{bad json', 'utf-8');
+    fs.writeFileSync(
+      path.join(tempDir, 'package.json'),
+      JSON.stringify({ name: 'good-app' }),
+      'utf-8',
+    );
+    expect(detectAppName(child)).toBe('good-app');
+  });
+});
+
+// ---------------------------------------------------------------------------
 // mergeConfigAndArgs
 // ---------------------------------------------------------------------------
 
@@ -290,6 +363,36 @@ describe('mergeConfigAndArgs', () => {
     const merged = mergeConfigAndArgs({}, {});
     expect(merged.phases).toEqual(['0', '1', '3a', '2a', '3b']);
   });
+
+  it('should auto-detect appName from package.json when not provided', () => {
+    const tempDir = fs.mkdtempSync(path.join(os.tmpdir(), 'cli-autodetect-'));
+    try {
+      fs.writeFileSync(
+        path.join(tempDir, 'package.json'),
+        JSON.stringify({ name: 'detected-app' }),
+        'utf-8',
+      );
+      const merged = mergeConfigAndArgs({}, { target: tempDir });
+      expect(merged.appName).toBe('detected-app');
+    } finally {
+      fs.rmSync(tempDir, { recursive: true, force: true });
+    }
+  });
+
+  it('should prefer explicit appName over auto-detected', () => {
+    const tempDir = fs.mkdtempSync(path.join(os.tmpdir(), 'cli-autodetect-'));
+    try {
+      fs.writeFileSync(
+        path.join(tempDir, 'package.json'),
+        JSON.stringify({ name: 'detected-app' }),
+        'utf-8',
+      );
+      const merged = mergeConfigAndArgs({}, { target: tempDir, appName: 'explicit-app' });
+      expect(merged.appName).toBe('explicit-app');
+    } finally {
+      fs.rmSync(tempDir, { recursive: true, force: true });
+    }
+  });
 });
 
 // ---------------------------------------------------------------------------
@@ -340,6 +443,7 @@ describe('validateOptions', () => {
       makeOpts({ appName: '', phases: ['1'] }),
     );
     expect(errors.some((e) => e.includes('--appName is required'))).toBe(true);
+    expect(errors.some((e) => e.includes('could not auto-detect'))).toBe(true);
   });
 
   it('should not error when --appName is missing for phase 0 only', () => {

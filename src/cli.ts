@@ -185,6 +185,30 @@ export function loadConfig(configPath: string): ConfigFile {
 }
 
 // ---------------------------------------------------------------------------
+// Auto-detect appName from package.json
+// ---------------------------------------------------------------------------
+
+export function detectAppName(target: string): string {
+  let dir = path.resolve(target);
+  const root = path.parse(dir).root;
+  while (dir !== root) {
+    const pkgPath = path.join(dir, 'package.json');
+    if (fs.existsSync(pkgPath)) {
+      try {
+        const pkg = JSON.parse(fs.readFileSync(pkgPath, 'utf-8'));
+        if (pkg.name && typeof pkg.name === 'string') {
+          return pkg.name;
+        }
+      } catch {
+        // ignore parse errors, keep walking up
+      }
+    }
+    dir = path.dirname(dir);
+  }
+  return '';
+}
+
+// ---------------------------------------------------------------------------
 // Merge config + CLI args (CLI wins)
 // ---------------------------------------------------------------------------
 
@@ -193,10 +217,11 @@ export function mergeConfigAndArgs(
   args: Partial<CliOptions>,
 ): CliOptions {
   const target = args.target ?? config.target ?? '';
+  const appName = args.appName ?? config.appName ?? (target ? detectAppName(target) : '');
 
   return {
     target,
-    appName: args.appName ?? config.appName ?? '',
+    appName,
     phases: args.phases ?? config.phases ?? DEFAULT_PHASES,
     dryRun: args.dryRun ?? false,
     extensions: args.extensions ?? config.extensions ?? 'ts,js,gts,gjs',
@@ -237,7 +262,7 @@ export function validateOptions(opts: CliOptions): ValidationResult {
   );
   if (needsAppName && !opts.appName) {
     errors.push(
-      '--appName is required when running phases 1, 2a, or 3a.',
+      '--appName is required when running phases 1, 2a, or 3a (could not auto-detect from package.json).',
     );
   }
 

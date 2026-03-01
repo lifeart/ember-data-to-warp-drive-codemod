@@ -27,15 +27,15 @@ Automates the bulk of a multi-phase migration that typically touches 90+ files. 
 
 ```bash
 # Run all default phases (0, 1, 3a, 2a, 3b):
-npx ember-data-codemod --appName=myapp --target=frontend/app
+npx ember-data-codemod --target=frontend/app
 
 # Dry run (preview changes without writing):
-npx ember-data-codemod --appName=myapp --target=frontend/app --dry-run
+npx ember-data-codemod --target=frontend/app --dry-run
 
 # Then: manual steps (store, handlers, extensions, inverse values)
 ```
 
-All phases support `.ts`, `.js`, `.gts`, and `.gjs` files.
+`--appName` is auto-detected from the nearest `package.json`. All phases support `.ts`, `.js`, `.gts`, and `.gjs` files.
 
 ---
 
@@ -45,16 +45,19 @@ Instead of running 6 separate commands, use the unified CLI:
 
 ```bash
 # Run all default phases (0, 1, 3a, 2a, 3b):
-npx ember-data-codemod --appName=myapp --target=frontend/app
+npx ember-data-codemod --target=frontend/app
 
 # Run specific phases:
-npx ember-data-codemod --appName=myapp --target=frontend/app --phases=0,1
+npx ember-data-codemod --target=frontend/app --phases=0,1
 
 # Dry run (preview changes without writing):
-npx ember-data-codemod --appName=myapp --target=frontend/app --dry-run
+npx ember-data-codemod --target=frontend/app --dry-run
 
 # Phase 4 is opt-in (only needed for mirror packages):
-npx ember-data-codemod --appName=myapp --target=frontend/app --phases=0,1,3a,2a,3b,4
+npx ember-data-codemod --target=frontend/app --phases=0,1,3a,2a,3b,4
+
+# Override auto-detected app name:
+npx ember-data-codemod --target=frontend/app --appName=myapp
 ```
 
 ### CLI Options
@@ -62,7 +65,7 @@ npx ember-data-codemod --appName=myapp --target=frontend/app --phases=0,1,3a,2a,
 | Option | Description | Default |
 |--------|-------------|---------|
 | `--target` | Target directory to transform | **required** |
-| `--appName` | Application name for import paths | **required** for phases 1/2a/3a |
+| `--appName` | Application name for import paths | auto-detected from `package.json` |
 | `--phases` | Comma-separated list of phase IDs | `0,1,3a,2a,3b` |
 | `--dry-run` | Preview changes without writing files | `false` |
 | `--extensions` | File extensions to process | `ts,js,gts,gjs` |
@@ -285,10 +288,10 @@ model.belongsTo('user').value()     → model.user
 Rewrite ember-data imports to WarpDrive, add `[Type]` brand, fix relationship specs.
 
 ```bash
-npx ember-data-codemod --target=frontend/app --appName=myapp --phases=1
+npx ember-data-codemod --target=frontend/app --phases=1
 ```
 
-**Options:** `--appName=myapp` (default: `app`)
+**Options:** `--appName` (auto-detected from `package.json`)
 
 ### Before / After Examples
 
@@ -352,10 +355,10 @@ declare module 'ember-data/types/registries/model' { ... }
 Update consumer files (routes, controllers, components) that reference ember-data APIs.
 
 ```bash
-npx ember-data-codemod --target=frontend/app --appName=myapp --phases=2a
+npx ember-data-codemod --target=frontend/app --phases=2a
 ```
 
-**Options:** `--appName=myapp` (default: `app`)
+**Options:** `--appName` (auto-detected from `package.json`)
 
 ### Before / After Examples
 
@@ -380,10 +383,10 @@ Type-only detection covers: annotations, type references, generics, interfaces, 
 Extract model field definitions into WarpDrive schema scaffolds.
 
 ```bash
-npx ember-data-codemod --target=frontend/app --appName=myapp --phases=3a
+npx ember-data-codemod --target=frontend/app --phases=3a
 ```
 
-**Options:** `--appName=myapp` | `--dryRun=true` | `--schemasDir=path` | `--baseOnlyClasses=Foo,Bar`
+**Options:** `--appName` (auto-detected) | `--dryRun=true` | `--schemasDir=path` | `--baseOnlyClasses=Foo,Bar`
 
 ### What Happens to Each Model
 
@@ -454,7 +457,7 @@ constructor()                       →  (skipped)
 Generate `schemas/index.ts` barrel file collecting all schemas and extensions.
 
 ```bash
-npx ember-data-codemod --target=frontend/app --appName=myapp --phases=3b
+npx ember-data-codemod --target=frontend/app --phases=3b
 ```
 
 **Output:**
