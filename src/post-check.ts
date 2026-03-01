@@ -56,7 +56,7 @@ export function walkDir(dir: string): string[] {
 
 function tsFiles(dir: string): string[] {
   return walkDir(dir).filter(
-    (f) => f.endsWith('.ts') || f.endsWith('.gts'),
+    (f) => /\.(g?[tj]s)$/.test(f),
   );
 }
 
@@ -120,7 +120,7 @@ function scanFilesForContent(
 // ---------------------------------------------------------------------------
 
 export function checkStoreService(target: string): CheckResult {
-  const candidates = ['services/store.ts', 'services/store.js'];
+  const candidates = ['services/store.ts', 'services/store.js', 'services/store.gts', 'services/store.gjs'];
   for (const rel of candidates) {
     if (fs.existsSync(path.join(target, rel))) {
       return { name: 'Store service exists', status: 'pass' };
@@ -134,7 +134,7 @@ export function checkStoreService(target: string): CheckResult {
 }
 
 export function checkWarpDriveInstall(target: string): CheckResult {
-  const candidates = ['app.ts', 'app.js', 'app.gts'];
+  const candidates = ['app.ts', 'app.js', 'app.gts', 'app.gjs'];
   for (const rel of candidates) {
     const filePath = path.join(target, rel);
     if (fs.existsSync(filePath)) {
@@ -290,15 +290,30 @@ export function checkRemainingTransitionMethods(target: string): CheckResult {
   };
 }
 
+// Receivers that have native .get()/.set() methods — not Ember
+const NON_EMBER_GET_SET_RECEIVERS =
+  /\b(?:Map|WeakMap|Set|WeakSet|URLSearchParams|Headers|FormData|DOMStringMap|CSSStyleDeclaration|Storage|localStorage|sessionStorage|cookie)\s*\.\s*(?:get|set)\s*\(/;
+
 export function checkRemainingGetSet(target: string): CheckResult {
   // Detect this.get('...') and this.set('...', ...) — Ember computed property access
-  // Also detect obj.get('...') on non-this receivers
+  // Excludes common non-Ember receivers (Map, URLSearchParams, Headers, etc.)
   const callPattern = /\.\s*(get|set)\s*\(\s*['"]/;
   // Detect import { get } from '@ember/object' or import { set } from '@ember/object'
   const importPattern =
     /import\s+\{[^}]*\b(?:get|set)\b[^}]*\}\s+from\s+['"]@ember\/object['"]/;
 
-  const callMatches = scanFilesForPattern(target, target, callPattern);
+  const callMatches = scanFilesForPattern(target, target, callPattern)
+    .filter(loc => {
+      // Re-read the matched line and exclude non-Ember receivers
+      const [relPath, lineStr] = loc.split(':');
+      const filePath = path.join(target, relPath);
+      try {
+        const line = readFile(filePath).split('\n')[parseInt(lineStr, 10) - 1];
+        return !NON_EMBER_GET_SET_RECEIVERS.test(line);
+      } catch {
+        return true;
+      }
+    });
   const importMatches = scanFilesForPattern(target, target, importPattern);
 
   // Deduplicate in case both patterns match the same line

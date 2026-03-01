@@ -230,7 +230,7 @@ describe('mergeConfigAndArgs', () => {
     expect(merged.target).toBe('');
     expect(merged.appName).toBe('');
     expect(merged.dryRun).toBe(false);
-    expect(merged.extensions).toBe('ts,gts');
+    expect(merged.extensions).toBe('ts,js,gts,gjs');
     expect(merged.baseOnlyClasses).toEqual([]);
     expect(merged.verbose).toBe(false);
     expect(merged.quiet).toBe(false);

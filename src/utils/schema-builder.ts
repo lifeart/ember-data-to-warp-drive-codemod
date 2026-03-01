@@ -318,7 +318,14 @@ function buildSchemaConst(info: SchemaInfo): string {
  */
 function toJSObject(obj: Record<string, any>): string {
   const entries = Object.entries(obj).map(([k, v]) => {
-    const val = typeof v === 'string' ? `'${v}'` : JSON.stringify(v);
+    let val: string;
+    if (typeof v === 'string') {
+      val = `'${v}'`;
+    } else if (v === undefined) {
+      val = 'undefined';
+    } else {
+      val = JSON.stringify(v);
+    }
     return `${k}: ${val}`;
   });
   return `{ ${entries.join(', ')} }`;

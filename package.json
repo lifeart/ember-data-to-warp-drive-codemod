@@ -1,17 +1,32 @@
 {
-  "name": "ember-data-to-warp-drive-codemods",
+  "name": "ember-data-to-warp-drive-codemod",
   "version": "1.0.0",
   "description": "jscodeshift codemod suite for migrating ember-data to @warp-drive/*",
-  "private": true,
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/lifeart/ember-data-to-warp-drive-codemod"
+  },
+  "homepage": "https://github.com/lifeart/ember-data-to-warp-drive-codemod#readme",
+  "keywords": ["ember-data", "warp-drive", "codemod", "jscodeshift", "migration"],
+  "engines": {
+    "node": ">=18"
+  },
+  "main": "dist/src/cli.js",
+  "bin": {
+    "ember-data-codemod": "dist/src/cli.js"
+  },
+  "files": ["dist/src", "README.md"],
   "scripts": {
-    "build": "tsc",
+    "build": "tsc && node scripts/add-shebangs.js",
     "test": "jest",
-    "phase-0": "jscodeshift -t src/phase-0-deprecation-cleanup.ts --parser=ts --extensions=ts,gts",
-    "phase-1": "jscodeshift -t src/phase-1-import-migration.ts --parser=ts --extensions=ts,gts",
-    "phase-2a": "jscodeshift -t src/phase-2a-consumer-migration.ts --parser=ts --extensions=ts,gts",
-    "phase-3a": "jscodeshift -t src/phase-3a-model-to-schema.ts --parser=ts --extensions=ts,gts",
+    "prepublishOnly": "npm run build && npm test",
+    "phase-0": "jscodeshift -t src/phase-0-deprecation-cleanup.ts --parser=ts --extensions=ts,js,gts,gjs",
+    "phase-1": "jscodeshift -t src/phase-1-import-migration.ts --parser=ts --extensions=ts,js,gts,gjs",
+    "phase-2a": "jscodeshift -t src/phase-2a-consumer-migration.ts --parser=ts --extensions=ts,js,gts,gjs",
+    "phase-3a": "jscodeshift -t src/phase-3a-model-to-schema.ts --parser=ts --extensions=ts,js,gts,gjs",
     "phase-3b": "tsx src/phase-3b-schema-index.ts",
-    "phase-4": "jscodeshift -t src/phase-4-mirror-to-official.ts --parser=ts --extensions=ts,gts",
+    "phase-4": "jscodeshift -t src/phase-4-mirror-to-official.ts --parser=ts --extensions=ts,js,gts,gjs",
     "migrate": "tsx src/cli.ts",
     "post-check": "tsx src/post-check.ts"
   },

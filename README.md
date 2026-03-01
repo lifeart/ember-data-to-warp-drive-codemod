@@ -26,41 +26,35 @@ Automates the bulk of a multi-phase migration that typically touches 90+ files. 
 ## Quick Start
 
 ```bash
-npm install
+# Run all default phases (0, 1, 3a, 2a, 3b):
+npx ember-data-codemod --appName=myapp --target=frontend/app
 
-# Run all phases in order (replace "myapp" with your app name):
-npx jscodeshift -t src/phase-0-deprecation-cleanup.ts  frontend/app/ --parser=ts --extensions=ts,gts
-npx jscodeshift -t src/phase-1-import-migration.ts     frontend/app/ --parser=ts --extensions=ts,gts --appName=myapp
-npx jscodeshift -t src/phase-3a-model-to-schema.ts     frontend/app/models/ --parser=ts --extensions=ts,gts --appName=myapp
-npx jscodeshift -t src/phase-2a-consumer-migration.ts  frontend/app/ --parser=ts --extensions=ts,gts --appName=myapp --ignore-pattern='**/models/**'
-npx tsx src/phase-3b-schema-index.ts --schemasDir=frontend/app/schemas
+# Dry run (preview changes without writing):
+npx ember-data-codemod --appName=myapp --target=frontend/app --dry-run
 
 # Then: manual steps (store, handlers, extensions, inverse values)
 ```
 
-All phases support `.ts`, `.gts`, and `.gjs` files.
+All phases support `.ts`, `.js`, `.gts`, and `.gjs` files.
 
 ---
 
 ## CLI Wrapper
 
-Instead of running 6 separate commands, use the unified CLI wrapper:
+Instead of running 6 separate commands, use the unified CLI:
 
 ```bash
 # Run all default phases (0, 1, 3a, 2a, 3b):
-npx tsx src/cli.ts --appName=myapp --target=frontend/app
+npx ember-data-codemod --appName=myapp --target=frontend/app
 
 # Run specific phases:
-npx tsx src/cli.ts --appName=myapp --target=frontend/app --phases=0,1
+npx ember-data-codemod --appName=myapp --target=frontend/app --phases=0,1
 
 # Dry run (preview changes without writing):
-npx tsx src/cli.ts --appName=myapp --target=frontend/app --dry-run
+npx ember-data-codemod --appName=myapp --target=frontend/app --dry-run
 
 # Phase 4 is opt-in (only needed for mirror packages):
-npx tsx src/cli.ts --appName=myapp --target=frontend/app --phases=0,1,3a,2a,3b,4
-
-# Or use the npm script:
-npm run migrate -- --appName=myapp --target=frontend/app
+npx ember-data-codemod --appName=myapp --target=frontend/app --phases=0,1,3a,2a,3b,4
 ```
 
 ### CLI Options
@@ -71,7 +65,7 @@ npm run migrate -- --appName=myapp --target=frontend/app
 | `--appName` | Application name for import paths | **required** for phases 1/2a/3a |
 | `--phases` | Comma-separated list of phase IDs | `0,1,3a,2a,3b` |
 | `--dry-run` | Preview changes without writing files | `false` |
-| `--extensions` | File extensions to process | `ts,gts` |
+| `--extensions` | File extensions to process | `ts,js,gts,gjs` |
 | `--modelsDir` | Models directory override | `<target>/models` |
 | `--schemasDir` | Schemas directory override | `<target>/schemas` |
 | `--baseOnlyClasses` | Comma-separated base-only class names | `[]` |
@@ -79,6 +73,7 @@ npm run migrate -- --appName=myapp --target=frontend/app
 | `--quiet` | Summary only, suppress per-phase output | `false` |
 | `--strict` | Exit with error if any phase has errors | `false` |
 | `--json` | Machine-readable JSON output (for CI) | `false` |
+| `--post-check` | Run post-migration diagnostic scanner instead of codemods | `false` |
 
 ### Config File (`.codemodrc.json`)
 
@@ -90,7 +85,7 @@ Create a `.codemodrc.json` in your working directory to avoid repeating options:
   "target": "frontend/app",
   "modelsDir": "frontend/app/models",
   "schemasDir": "frontend/app/schemas",
-  "extensions": "ts,gts",
+  "extensions": "ts,js,gts,gjs",
   "baseOnlyClasses": ["CompletionDependent"]
 }
 ```
@@ -110,32 +105,29 @@ The CLI validates options before running:
 After running the codemods, scan for common issues that need manual attention:
 
 ```bash
-npx tsx src/post-check.ts --target=frontend/app
+npx ember-data-codemod --post-check --target=frontend/app
 
 # Verbose mode (show all file locations):
-npx tsx src/post-check.ts --target=frontend/app --verbose
+npx ember-data-codemod --post-check --target=frontend/app --verbose
 
 # Strict mode (warnings treated as failures, exits non-zero):
-npx tsx src/post-check.ts --target=frontend/app --strict
+npx ember-data-codemod --post-check --target=frontend/app --strict
 
 # JSON output (for CI integration):
-npx tsx src/post-check.ts --target=frontend/app --json
-
-# Or use the npm script:
-npm run post-check -- --target=frontend/app
+npx ember-data-codemod --post-check --target=frontend/app --json
 ```
 
 ### Checks Performed
 
 | # | Check | Status | What it scans |
 |---|-------|--------|---------------|
-| 1 | Store service exists | pass/fail | `target/services/store.{ts,js}` |
-| 2 | `@warp-drive/ember/install` | pass/fail | `target/app.{ts,js,gts}` |
-| 3 | Remaining `@ember-data/` imports | pass/warn | All `.ts`/`.gts` files |
-| 4 | Remaining `ember-data` barrel imports | pass/warn | All `.ts`/`.gts` files |
-| 5 | Remaining `@ember/utils` imports | pass/warn | All `.ts`/`.gts` files |
-| 6 | Remaining `@ember/array` imports | pass/warn | All `.ts`/`.gts` files |
-| 7 | Codemod-related TODO comments | pass/warn | All `.ts`/`.gts` files |
+| 1 | Store service exists | pass/fail | `target/services/store.{ts,js,gts,gjs}` |
+| 2 | `@warp-drive/ember/install` | pass/fail | `target/app.{ts,js,gts,gjs}` |
+| 3 | Remaining `@ember-data/` imports | pass/warn | All `.ts`/`.js`/`.gts`/`.gjs` files |
+| 4 | Remaining `ember-data` barrel imports | pass/warn | All `.ts`/`.js`/`.gts`/`.gjs` files |
+| 5 | Remaining `@ember/utils` imports | pass/warn | All `.ts`/`.js`/`.gts`/`.gjs` files |
+| 6 | Remaining `@ember/array` imports | pass/warn | All `.ts`/`.js`/`.gts`/`.gjs` files |
+| 7 | Codemod-related TODO comments | pass/warn | All `.ts`/`.js`/`.gts`/`.gjs` files |
 | 8 | `inverse: null` relationships | pass/warn | Schema files |
 | 9 | Extension `this.` -> `self.` TODOs | pass/warn | Schema files |
 | 10 | Remaining deprecated array APIs | pass/warn | `.toArray()`, `.sortBy()`, `.filterBy()`, `.mapBy()`, etc. |
@@ -232,7 +224,7 @@ npm run post-check -- --target=frontend/app
 Remove deprecated Ember/ember-data APIs before the actual migration.
 
 ```bash
-npx jscodeshift -t src/phase-0-deprecation-cleanup.ts frontend/app/ --parser=ts --extensions=ts,gts
+npx ember-data-codemod --target=frontend/app --phases=0
 ```
 
 ### Before / After Examples
@@ -250,7 +242,7 @@ obj.setProperties({ a: 1, b: 2 })  → obj.a = 1; obj.b = 2;
 
 // ─── Array helpers ──────────────────────────────────
 items.toArray()                     → Array.from(items)
-items.sortBy('name')                → items.sort((a, b) => a.name < b.name ? -1 : a.name > b.name ? 1 : 0)
+items.sortBy('name')                → Array.from(items).sort((a, b) => a.name < b.name ? -1 : a.name > b.name ? 1 : 0)
 items.sortBy('last', 'first')       → items.sort(/* chained ternary for each key */)
 items.mapBy('name')                 → items.map(item => item.name)
 items.filterBy('active', true)      → items.filter(item => item.active === true)
@@ -293,7 +285,7 @@ model.belongsTo('user').value()     → model.user
 Rewrite ember-data imports to WarpDrive, add `[Type]` brand, fix relationship specs.
 
 ```bash
-npx jscodeshift -t src/phase-1-import-migration.ts frontend/app/ --parser=ts --extensions=ts,gts --appName=myapp
+npx ember-data-codemod --target=frontend/app --appName=myapp --phases=1
 ```
 
 **Options:** `--appName=myapp` (default: `app`)
@@ -360,7 +352,7 @@ declare module 'ember-data/types/registries/model' { ... }
 Update consumer files (routes, controllers, components) that reference ember-data APIs.
 
 ```bash
-npx jscodeshift -t src/phase-2a-consumer-migration.ts frontend/app/ --parser=ts --extensions=ts,gts --appName=myapp --ignore-pattern='**/models/**'
+npx ember-data-codemod --target=frontend/app --appName=myapp --phases=2a
 ```
 
 **Options:** `--appName=myapp` (default: `app`)
@@ -388,7 +380,7 @@ Type-only detection covers: annotations, type references, generics, interfaces, 
 Extract model field definitions into WarpDrive schema scaffolds.
 
 ```bash
-npx jscodeshift -t src/phase-3a-model-to-schema.ts frontend/app/models/ --parser=ts --extensions=ts,gts --appName=myapp
+npx ember-data-codemod --target=frontend/app --appName=myapp --phases=3a
 ```
 
 **Options:** `--appName=myapp` | `--dryRun=true` | `--schemasDir=path` | `--baseOnlyClasses=Foo,Bar`
@@ -462,7 +454,7 @@ constructor()                       →  (skipped)
 Generate `schemas/index.ts` barrel file collecting all schemas and extensions.
 
 ```bash
-npx tsx src/phase-3b-schema-index.ts --schemasDir=frontend/app/schemas
+npx ember-data-codemod --target=frontend/app --appName=myapp --phases=3b
 ```
 
 **Output:**
@@ -484,7 +476,7 @@ export const ALL_EXTENSIONS = [UserExtension];
 Replace `@warp-drive-mirror/*` with `@warp-drive/*`. Only needed if mirror packages were used as an intermediate step.
 
 ```bash
-npx jscodeshift -t src/phase-4-mirror-to-official.ts frontend/app/ --parser=ts --extensions=ts,gts
+npx ember-data-codemod --target=frontend/app --phases=4
 ```
 
 Handles static `import`, `require()`, and dynamic `import()`.

@@ -4,14 +4,13 @@
  * CLI Wrapper — single entry point for the full migration pipeline.
  *
  * Usage:
- *   npx tsx codemods/src/cli.ts --appName=myapp --target=frontend/app
- *   npx tsx codemods/src/cli.ts --appName=myapp --target=frontend/app --phases=0,1
- *   npx tsx codemods/src/cli.ts --appName=myapp --target=frontend/app --dry-run
+ *   npx ember-data-codemod --appName=myapp --target=frontend/app
+ *   npx ember-data-codemod --appName=myapp --target=frontend/app --phases=0,1
+ *   npx ember-data-codemod --appName=myapp --target=frontend/app --dry-run
  */
 
 import * as fs from 'fs';
 import * as path from 'path';
-import { execFileSync } from 'child_process';
 import {
   type PhaseResult,
   printPhaseHeader,
@@ -19,6 +18,13 @@ import {
   printGrandSummary,
   formatResultsJson,
 } from './utils/reporter';
+import { scanSchemas, generateBarrelFile } from './phase-3b-schema-index';
+import {
+  parsePostCheckArgs,
+  runAllChecks,
+  printCheckResults,
+  formatCheckResultsJson,
+} from './post-check';
 
 // ---------------------------------------------------------------------------
 // Types
@@ -67,14 +73,14 @@ const PHASE_DEFINITIONS: PhaseDefinition[] = [
     id: '0',
     name: 'Deprecation Cleanup',
     type: 'jscodeshift',
-    transformFile: 'src/phase-0-deprecation-cleanup.ts',
+    transformFile: 'phase-0-deprecation-cleanup',
     getTarget: (opts) => opts.target,
   },
   {
     id: '1',
     name: 'Import Migration',
     type: 'jscodeshift',
-    transformFile: 'src/phase-1-import-migration.ts',
+    transformFile: 'phase-1-import-migration',
     getTarget: (opts) => opts.target,
     getRunnerOptions: (opts) => ({ appName: opts.appName }),
   },
@@ -82,7 +88,7 @@ const PHASE_DEFINITIONS: PhaseDefinition[] = [
     id: '3a',
     name: 'Model to Schema',
     type: 'jscodeshift',
-    transformFile: 'src/phase-3a-model-to-schema.ts',
+    transformFile: 'phase-3a-model-to-schema',
     getTarget: (opts) => opts.modelsDir,
     getRunnerOptions: (opts) => ({
       appName: opts.appName,
@@ -95,7 +101,7 @@ const PHASE_DEFINITIONS: PhaseDefinition[] = [
     id: '2a',
     name: 'Consumer Migration',
     type: 'jscodeshift',
-    transformFile: 'src/phase-2a-consumer-migration.ts',
+    transformFile: 'phase-2a-consumer-migration',
     getTarget: (opts) => opts.target,
     getRunnerOptions: (opts) => ({
       appName: opts.appName,
@@ -112,7 +118,7 @@ const PHASE_DEFINITIONS: PhaseDefinition[] = [
     id: '4',
     name: 'Mirror to Official',
     type: 'jscodeshift',
-    transformFile: 'src/phase-4-mirror-to-official.ts',
+    transformFile: 'phase-4-mirror-to-official',
     getTarget: (opts) => opts.target,
   },
 ];
@@ -193,7 +199,7 @@ export function mergeConfigAndArgs(
     appName: args.appName ?? config.appName ?? '',
     phases: args.phases ?? config.phases ?? DEFAULT_PHASES,
     dryRun: args.dryRun ?? false,
-    extensions: args.extensions ?? config.extensions ?? 'ts,gts',
+    extensions: args.extensions ?? config.extensions ?? 'ts,js,gts,gjs',
     modelsDir:
       args.modelsDir ?? config.modelsDir ?? (target ? path.join(target, 'models') : ''),
     schemasDir:
@@ -287,13 +293,17 @@ export function validateOptions(opts: CliOptions): ValidationResult {
 async function runJscodeshiftPhase(
   phase: PhaseDefinition,
   opts: CliOptions,
-  codemodRoot: string,
 ): Promise<PhaseResult> {
   // Dynamic require so we don't bundle Runner at parse-time
   // eslint-disable-next-line @typescript-eslint/no-var-requires
   const Runner = require('jscodeshift/src/Runner');
 
-  const transformPath = path.resolve(codemodRoot, phase.transformFile!);
+  // Resolve transform relative to __dirname; prefer .ts (dev with tsx) then .js (compiled)
+  const basePath = path.join(__dirname, phase.transformFile!);
+  const transformPath = fs.existsSync(basePath + '.ts') ? basePath + '.ts' : basePath + '.js';
+  if (!fs.existsSync(transformPath)) {
+    throw new Error(`Transform not found: ${basePath}.{ts,js}`);
+  }
   const targetPath = path.resolve(phase.getTarget(opts));
 
   const runnerOpts: Record<string, unknown> = {
@@ -319,44 +329,36 @@ async function runJscodeshiftPhase(
   };
 }
 
-function runStandalonePhase3b(
-  opts: CliOptions,
-  codemodRoot: string,
-): PhaseResult {
+function runStandalonePhase3b(opts: CliOptions): PhaseResult {
   const startTime = process.hrtime();
-  const scriptPath = path.resolve(
-    codemodRoot,
-    'src/phase-3b-schema-index.ts',
-  );
   const schemasDir = path.resolve(opts.schemasDir);
-
-  const args = ['tsx', scriptPath, `--schemasDir=${schemasDir}`];
-  if (opts.dryRun) {
-    args.push('--dryRun');
-  }
-
-  const stdio = opts.quiet || opts.json ? 'pipe' : 'inherit';
   let ok = 0;
   let error = 0;
   try {
-    execFileSync('npx', args, { encoding: 'utf-8', stdio });
+    const exports = scanSchemas(schemasDir);
+    const output = generateBarrelFile(exports);
+    const indexPath = path.join(schemasDir, 'index.ts');
+    if (opts.dryRun) {
+      if (!opts.quiet && !opts.json) {
+        console.log(`[dry-run] Would write ${indexPath}:`);
+        console.log(output);
+      }
+    } else {
+      fs.writeFileSync(indexPath, output, 'utf-8');
+      if (!opts.quiet && !opts.json) {
+        console.log(`Generated ${indexPath}`);
+      }
+    }
     ok = 1;
-  } catch {
+  } catch (e) {
     error = 1;
+    if (!opts.quiet && !opts.json) {
+      console.error(`Phase 3b error: ${e instanceof Error ? e.message : e}`);
+    }
   }
-
   const endTime = process.hrtime(startTime);
   const timeElapsed = (endTime[0] + endTime[1] / 1e9).toFixed(3);
-
-  return {
-    phaseId: '3b',
-    phaseName: 'Schema Index',
-    ok,
-    nochange: 0,
-    skip: 0,
-    error,
-    timeElapsed,
-  };
+  return { phaseId: '3b', phaseName: 'Schema Index', ok, nochange: 0, skip: 0, error, timeElapsed };
 }
 
 // ---------------------------------------------------------------------------
@@ -364,7 +366,6 @@ function runStandalonePhase3b(
 // ---------------------------------------------------------------------------
 
 async function main(): Promise<void> {
-  const codemodRoot = path.resolve(__dirname, '..');
   const args = parseArgs(process.argv.slice(2));
   const configPath = path.resolve(process.cwd(), '.codemodrc.json');
   const config = loadConfig(configPath);
@@ -417,9 +418,9 @@ async function main(): Promise<void> {
 
     let result: PhaseResult;
     if (phase.type === 'standalone') {
-      result = runStandalonePhase3b(opts, codemodRoot);
+      result = runStandalonePhase3b(opts);
     } else {
-      result = await runJscodeshiftPhase(phase, opts, codemodRoot);
+      result = await runJscodeshiftPhase(phase, opts);
     }
 
     if (!opts.quiet && !opts.json) {
@@ -446,9 +447,50 @@ async function main(): Promise<void> {
   }
 }
 
-if (require.main === module) {
-  main().catch((err) => {
-    console.error('Fatal error:', err);
+function runPostCheck(argv: string[]): void {
+  const opts = parsePostCheckArgs(argv);
+
+  if (!opts.target) {
+    console.error('Usage: ember-data-codemod --post-check --target=path/to/app [--strict] [--json] [--verbose]');
     process.exit(1);
-  });
+  }
+
+  const resolvedTarget = path.resolve(opts.target);
+  if (!fs.existsSync(resolvedTarget)) {
+    console.error(`Target directory not found: ${resolvedTarget}`);
+    process.exit(1);
+  }
+
+  const results = runAllChecks(resolvedTarget);
+
+  if (opts.json) {
+    console.log(formatCheckResultsJson(results));
+  } else {
+    printCheckResults(results, { verbose: opts.verbose });
+  }
+
+  const failures = results.filter((r) => r.status === 'fail').length;
+  const warnings = results.filter((r) => r.status === 'warn').length;
+
+  if (failures > 0) {
+    process.exit(1);
+  }
+  if (opts.strict && warnings > 0) {
+    if (!opts.json) {
+      console.log('Exiting with error due to --strict mode (warnings treated as failures).');
+    }
+    process.exit(1);
+  }
+}
+
+if (require.main === module) {
+  const argv = process.argv.slice(2);
+  if (argv.includes('--post-check')) {
+    runPostCheck(argv);
+  } else {
+    main().catch((err) => {
+      console.error('Fatal error:', err);
+      process.exit(1);
+    });
+  }
 }

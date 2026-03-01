@@ -72,10 +72,10 @@ export function scanSchemas(schemasDir: string): SchemaExport[] {
 
   for (const filePath of files) {
     const basename = path.basename(filePath);
-    // Skip index.ts itself
-    if (basename === 'index.ts') continue;
-    // Only .ts and .gts files
-    if (!filePath.endsWith('.ts') && !filePath.endsWith('.gts')) continue;
+    // Skip index files themselves
+    if (basename === 'index.ts' || basename === 'index.js') continue;
+    // Only .ts, .js, .gts, .gjs files
+    if (!/\.(g?[tj]s)$/.test(filePath)) continue;
 
     const content = fs.readFileSync(filePath, 'utf-8');
     const schemas: string[] = [];
@@ -105,7 +105,7 @@ export function scanSchemas(schemasDir: string): SchemaExport[] {
         './' +
         path
           .relative(schemasDir, filePath)
-          .replace(/\.(g?ts)$/, '')
+          .replace(/\.(g?[tj]s)$/, '')
           .replace(/\\/g, '/');
 
       results.push({ filePath, relativePath, schemas, extensions });
@@ -174,8 +174,14 @@ function stripCommentLines(source: string): string {
 
   for (const line of lines) {
     if (inBlockComment) {
-      if (line.includes('*/')) {
+      const closeIdx = line.indexOf('*/');
+      if (closeIdx !== -1) {
         inBlockComment = false;
+        // Keep any code after the closing */
+        const rest = line.slice(closeIdx + 2);
+        if (rest.trim().length > 0) {
+          filtered.push(rest);
+        }
       }
       continue;
     }
@@ -184,8 +190,16 @@ function stripCommentLines(source: string): string {
       continue;
     }
     if (trimmed.startsWith('/*')) {
-      if (!trimmed.includes('*/')) {
+      const closeIdx = trimmed.indexOf('*/', 2);
+      if (closeIdx === -1) {
+        // Block comment continues to next line
         inBlockComment = true;
+      } else {
+        // Block comment opens and closes on the same line — keep code after it
+        const rest = trimmed.slice(closeIdx + 2);
+        if (rest.trim().length > 0) {
+          filtered.push(rest);
+        }
       }
       continue;
     }
