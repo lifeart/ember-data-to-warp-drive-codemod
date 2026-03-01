@@ -26,14 +26,14 @@ Automates the bulk of a multi-phase migration that typically touches 90+ files. 
 ## Quick Start
 
 ```bash
-cd codemods && npm install
+npm install
 
 # Run all phases in order (replace "myapp" with your app name):
-npx jscodeshift -t codemods/src/phase-0-deprecation-cleanup.ts  frontend/app/ --parser=ts --extensions=ts,gts
-npx jscodeshift -t codemods/src/phase-1-import-migration.ts     frontend/app/ --parser=ts --extensions=ts,gts --appName=myapp
-npx jscodeshift -t codemods/src/phase-3a-model-to-schema.ts     frontend/app/models/ --parser=ts --extensions=ts,gts --appName=myapp
-npx jscodeshift -t codemods/src/phase-2a-consumer-migration.ts  frontend/app/ --parser=ts --extensions=ts,gts --appName=myapp --ignore-pattern='**/models/**'
-npx tsx codemods/src/phase-3b-schema-index.ts --schemasDir=frontend/app/schemas
+npx jscodeshift -t src/phase-0-deprecation-cleanup.ts  frontend/app/ --parser=ts --extensions=ts,gts
+npx jscodeshift -t src/phase-1-import-migration.ts     frontend/app/ --parser=ts --extensions=ts,gts --appName=myapp
+npx jscodeshift -t src/phase-3a-model-to-schema.ts     frontend/app/models/ --parser=ts --extensions=ts,gts --appName=myapp
+npx jscodeshift -t src/phase-2a-consumer-migration.ts  frontend/app/ --parser=ts --extensions=ts,gts --appName=myapp --ignore-pattern='**/models/**'
+npx tsx src/phase-3b-schema-index.ts --schemasDir=frontend/app/schemas
 
 # Then: manual steps (store, handlers, extensions, inverse values)
 ```
@@ -48,19 +48,19 @@ Instead of running 6 separate commands, use the unified CLI wrapper:
 
 ```bash
 # Run all default phases (0, 1, 3a, 2a, 3b):
-npx tsx codemods/src/cli.ts --appName=myapp --target=frontend/app
+npx tsx src/cli.ts --appName=myapp --target=frontend/app
 
 # Run specific phases:
-npx tsx codemods/src/cli.ts --appName=myapp --target=frontend/app --phases=0,1
+npx tsx src/cli.ts --appName=myapp --target=frontend/app --phases=0,1
 
 # Dry run (preview changes without writing):
-npx tsx codemods/src/cli.ts --appName=myapp --target=frontend/app --dry-run
+npx tsx src/cli.ts --appName=myapp --target=frontend/app --dry-run
 
 # Phase 4 is opt-in (only needed for mirror packages):
-npx tsx codemods/src/cli.ts --appName=myapp --target=frontend/app --phases=0,1,3a,2a,3b,4
+npx tsx src/cli.ts --appName=myapp --target=frontend/app --phases=0,1,3a,2a,3b,4
 
 # Or use the npm script:
-cd codemods && npm run migrate -- --appName=myapp --target=../frontend/app
+npm run migrate -- --appName=myapp --target=frontend/app
 ```
 
 ### CLI Options
@@ -110,19 +110,19 @@ The CLI validates options before running:
 After running the codemods, scan for common issues that need manual attention:
 
 ```bash
-npx tsx codemods/src/post-check.ts --target=frontend/app
+npx tsx src/post-check.ts --target=frontend/app
 
 # Verbose mode (show all file locations):
-npx tsx codemods/src/post-check.ts --target=frontend/app --verbose
+npx tsx src/post-check.ts --target=frontend/app --verbose
 
 # Strict mode (warnings treated as failures, exits non-zero):
-npx tsx codemods/src/post-check.ts --target=frontend/app --strict
+npx tsx src/post-check.ts --target=frontend/app --strict
 
 # JSON output (for CI integration):
-npx tsx codemods/src/post-check.ts --target=frontend/app --json
+npx tsx src/post-check.ts --target=frontend/app --json
 
 # Or use the npm script:
-cd codemods && npm run post-check -- --target=../frontend/app
+npm run post-check -- --target=frontend/app
 ```
 
 ### Checks Performed
@@ -133,17 +133,19 @@ cd codemods && npm run post-check -- --target=../frontend/app
 | 2 | `@warp-drive/ember/install` | pass/fail | `target/app.{ts,js,gts}` |
 | 3 | Remaining `@ember-data/` imports | pass/warn | All `.ts`/`.gts` files |
 | 4 | Remaining `ember-data` barrel imports | pass/warn | All `.ts`/`.gts` files |
-| 5 | Codemod TODO comments | pass/warn | All `.ts`/`.gts` files |
-| 6 | `inverse: null` relationships | pass/warn | Schema files |
-| 7 | Extension `this.` -> `self.` TODOs | pass/warn | Schema files |
-| 8 | Remaining deprecated array APIs | pass/warn | `.toArray()`, `.sortBy()`, `.filterBy()`, `.mapBy()`, etc. |
-| 9 | Remaining `this.transitionTo/replaceWith` | pass/warn | Deprecated route/controller methods |
-| 10 | Remaining `this.get()`/`this.set()` | pass/warn | Ember computed property access |
-| 11 | Remaining `.setProperties()` | pass/warn | Incompatible with SchemaRecord |
-| 12 | Remaining adapter files | pass/warn | `target/adapters/` directory |
-| 13 | Remaining serializer files | pass/warn | `target/serializers/` directory |
-| 14 | Remaining legacy transforms | pass/warn | `target/transforms/` (should be `transformations/`) |
-| 15 | Model imports not rewritten to schemas | pass/warn | Consumer files still importing from `models/` instead of `schemas/` |
+| 5 | Remaining `@ember/utils` imports | pass/warn | All `.ts`/`.gts` files |
+| 6 | Remaining `@ember/array` imports | pass/warn | All `.ts`/`.gts` files |
+| 7 | Codemod-related TODO comments | pass/warn | All `.ts`/`.gts` files |
+| 8 | `inverse: null` relationships | pass/warn | Schema files |
+| 9 | Extension `this.` -> `self.` TODOs | pass/warn | Schema files |
+| 10 | Remaining deprecated array APIs | pass/warn | `.toArray()`, `.sortBy()`, `.filterBy()`, `.mapBy()`, etc. |
+| 11 | Remaining `this.transitionTo/replaceWith` | pass/warn | Deprecated route/controller methods |
+| 12 | Remaining `get()`/`set()` usage | pass/warn | Ember computed property access + `@ember/object` imports |
+| 13 | Remaining `.setProperties()` | pass/warn | Incompatible with SchemaRecord |
+| 14 | Remaining adapter files | pass/warn | `target/adapters/` directory |
+| 15 | Remaining serializer files | pass/warn | `target/serializers/` directory |
+| 16 | Remaining legacy transforms | pass/warn | `target/transforms/` (should be `transformations/`) |
+| 17 | Model imports not rewritten to schemas | pass/warn | Consumer files still importing from `models/` instead of `schemas/` |
 
 ---
 
@@ -230,7 +232,7 @@ cd codemods && npm run post-check -- --target=../frontend/app
 Remove deprecated Ember/ember-data APIs before the actual migration.
 
 ```bash
-npx jscodeshift -t codemods/src/phase-0-deprecation-cleanup.ts frontend/app/ --parser=ts --extensions=ts,gts
+npx jscodeshift -t src/phase-0-deprecation-cleanup.ts frontend/app/ --parser=ts --extensions=ts,gts
 ```
 
 ### Before / After Examples
@@ -291,7 +293,7 @@ model.belongsTo('user').value()     → model.user
 Rewrite ember-data imports to WarpDrive, add `[Type]` brand, fix relationship specs.
 
 ```bash
-npx jscodeshift -t codemods/src/phase-1-import-migration.ts frontend/app/ --parser=ts --extensions=ts,gts --appName=myapp
+npx jscodeshift -t src/phase-1-import-migration.ts frontend/app/ --parser=ts --extensions=ts,gts --appName=myapp
 ```
 
 **Options:** `--appName=myapp` (default: `app`)
@@ -358,7 +360,7 @@ declare module 'ember-data/types/registries/model' { ... }
 Update consumer files (routes, controllers, components) that reference ember-data APIs.
 
 ```bash
-npx jscodeshift -t codemods/src/phase-2a-consumer-migration.ts frontend/app/ --parser=ts --extensions=ts,gts --appName=myapp --ignore-pattern='**/models/**'
+npx jscodeshift -t src/phase-2a-consumer-migration.ts frontend/app/ --parser=ts --extensions=ts,gts --appName=myapp --ignore-pattern='**/models/**'
 ```
 
 **Options:** `--appName=myapp` (default: `app`)
@@ -386,7 +388,7 @@ Type-only detection covers: annotations, type references, generics, interfaces, 
 Extract model field definitions into WarpDrive schema scaffolds.
 
 ```bash
-npx jscodeshift -t codemods/src/phase-3a-model-to-schema.ts frontend/app/models/ --parser=ts --extensions=ts,gts --appName=myapp
+npx jscodeshift -t src/phase-3a-model-to-schema.ts frontend/app/models/ --parser=ts --extensions=ts,gts --appName=myapp
 ```
 
 **Options:** `--appName=myapp` | `--dryRun=true` | `--schemasDir=path` | `--baseOnlyClasses=Foo,Bar`
@@ -460,7 +462,7 @@ constructor()                       →  (skipped)
 Generate `schemas/index.ts` barrel file collecting all schemas and extensions.
 
 ```bash
-npx tsx codemods/src/phase-3b-schema-index.ts --schemasDir=frontend/app/schemas
+npx tsx src/phase-3b-schema-index.ts --schemasDir=frontend/app/schemas
 ```
 
 **Output:**
@@ -482,7 +484,7 @@ export const ALL_EXTENSIONS = [UserExtension];
 Replace `@warp-drive-mirror/*` with `@warp-drive/*`. Only needed if mirror packages were used as an intermediate step.
 
 ```bash
-npx jscodeshift -t codemods/src/phase-4-mirror-to-official.ts frontend/app/ --parser=ts --extensions=ts,gts
+npx jscodeshift -t src/phase-4-mirror-to-official.ts frontend/app/ --parser=ts --extensions=ts,gts
 ```
 
 Handles static `import`, `require()`, and dynamic `import()`.
@@ -518,10 +520,10 @@ After running all phases, these tasks require manual work:
 ## Testing
 
 ```bash
-cd codemods && npm test
+npm test
 ```
 
-**453+ tests** across 9 test suites covering all phases, utilities, CLI wrapper, and post-migration checker.
+**518+ tests** across 9 test suites covering all phases, utilities, CLI wrapper, and post-migration checker.
 
 > **Tip**: Some chained patterns like `items.filterBy('active').sortBy('name')` may require running Phase 0 twice, since jscodeshift processes outer call expressions first.
 
@@ -530,7 +532,6 @@ cd codemods && npm test
 ## Project Structure
 
 ```
-codemods/
 ├── src/
 │   ├── utils/
 │   │   ├── imports.ts              addImport, removeImport, isUsedOnlyAsType
