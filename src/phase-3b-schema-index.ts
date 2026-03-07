@@ -46,9 +46,10 @@ function main(): void {
   }
 
   const exports = scanSchemas(resolvedDir);
-  const output = generateBarrelFile(exports);
-
-  const indexPath = path.join(resolvedDir, 'index.ts');
+  const isTS = !shouldUseJsBarrel(exports);
+  const output = generateBarrelFile(exports, isTS);
+  const indexExt = isTS ? '.ts' : '.js';
+  const indexPath = path.join(resolvedDir, `index${indexExt}`);
   if (dryRun) {
     console.log(`[dry-run] Would write ${indexPath}:`);
     console.log(output);
@@ -119,9 +120,17 @@ export function scanSchemas(schemasDir: string): SchemaExport[] {
 }
 
 /**
+ * Determine whether the barrel file should use JS based on the schema files.
+ * Returns true if all schema files are .js or .gjs.
+ */
+export function shouldUseJsBarrel(exports: SchemaExport[]): boolean {
+  return exports.length > 0 && exports.every(e => e.filePath.endsWith('.js') || e.filePath.endsWith('.gjs'));
+}
+
+/**
  * Generate the barrel file content.
  */
-export function generateBarrelFile(exports: SchemaExport[]): string {
+export function generateBarrelFile(exports: SchemaExport[], isTypeScript = true): string {
   const lines: string[] = [];
 
   // Auto-generated header comment
@@ -155,7 +164,11 @@ export function generateBarrelFile(exports: SchemaExport[]): string {
     }
     lines.push(`];`);
   } else {
-    lines.push(`export const ALL_EXTENSIONS: never[] = [];`);
+    if (isTypeScript) {
+      lines.push(`export const ALL_EXTENSIONS: never[] = [];`);
+    } else {
+      lines.push(`export const ALL_EXTENSIONS = [];`);
+    }
   }
 
   lines.push('');

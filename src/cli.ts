@@ -4,9 +4,9 @@
  * CLI Wrapper — single entry point for the full migration pipeline.
  *
  * Usage:
- *   npx ember-data-codemod --appName=myapp --target=frontend/app
- *   npx ember-data-codemod --appName=myapp --target=frontend/app --phases=0,1
- *   npx ember-data-codemod --appName=myapp --target=frontend/app --dry-run
+ *   npx ember-data-to-warp-drive-codemod --appName=myapp --target=frontend/app
+ *   npx ember-data-to-warp-drive-codemod --appName=myapp --target=frontend/app --phases=0,1
+ *   npx ember-data-to-warp-drive-codemod --appName=myapp --target=frontend/app --dry-run
  */
 
 import * as fs from 'fs';
@@ -18,7 +18,7 @@ import {
   printGrandSummary,
   formatResultsJson,
 } from './utils/reporter';
-import { scanSchemas, generateBarrelFile } from './phase-3b-schema-index';
+import { scanSchemas, generateBarrelFile, shouldUseJsBarrel } from './phase-3b-schema-index';
 import {
   parsePostCheckArgs,
   runAllChecks,
@@ -361,8 +361,10 @@ function runStandalonePhase3b(opts: CliOptions): PhaseResult {
   let error = 0;
   try {
     const exports = scanSchemas(schemasDir);
-    const output = generateBarrelFile(exports);
-    const indexPath = path.join(schemasDir, 'index.ts');
+    const isTS = !shouldUseJsBarrel(exports);
+    const output = generateBarrelFile(exports, isTS);
+    const indexExt = isTS ? '.ts' : '.js';
+    const indexPath = path.join(schemasDir, `index${indexExt}`);
     if (opts.dryRun) {
       if (!opts.quiet && !opts.json) {
         console.log(`[dry-run] Would write ${indexPath}:`);
@@ -476,7 +478,7 @@ function runPostCheck(argv: string[]): void {
   const opts = parsePostCheckArgs(argv);
 
   if (!opts.target) {
-    console.error('Usage: ember-data-codemod --post-check --target=path/to/app [--strict] [--json] [--verbose]');
+    console.error('Usage: ember-data-to-warp-drive-codemod --post-check --target=path/to/app [--strict] [--json] [--verbose]');
     process.exit(1);
   }
 

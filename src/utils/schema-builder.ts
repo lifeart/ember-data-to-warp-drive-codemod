@@ -45,6 +45,7 @@ export interface SchemaInfo {
   parentClass: string;
   appName: string;
   customTransforms: Record<string, { tsType: string; importFrom?: string }>;
+  isTypeScript: boolean;
 }
 
 /**
@@ -91,9 +92,11 @@ export function buildSchemaFile(info: SchemaInfo): string {
     lines.push('');
   }
 
-  // Self interface
-  lines.push(buildSelfInterface(info));
-  lines.push('');
+  // Self interface (TS only)
+  if (info.isTypeScript) {
+    lines.push(buildSelfInterface(info));
+    lines.push('');
+  }
 
   // Schema definition (includes @local fields inline)
   lines.push(buildSchemaConst(info));
@@ -105,12 +108,20 @@ export function buildSchemaFile(info: SchemaInfo): string {
     lines.push('');
   }
 
-  // Type alias
-  lines.push(buildTypeAlias(info));
-  lines.push('');
+  // Type alias (TS) or default export (JS)
+  if (info.isTypeScript) {
+    lines.push(buildTypeAlias(info));
+    lines.push('');
+  } else {
+    lines.push(`export default ${info.schemaVarName};`);
+    lines.push('');
+  }
 
   // Named exports preservation
+  const TS_ONLY_EXPORT_KINDS = new Set(['interface', 'type']);
   for (const exp of info.namedExports) {
+    // Skip type-only exports in JS mode
+    if (!info.isTypeScript && TS_ONLY_EXPORT_KINDS.has(exp.kind)) continue;
     lines.push(exp.sourceText);
     lines.push('');
   }
@@ -132,14 +143,21 @@ export function buildSchemaFile(info: SchemaInfo): string {
  */
 export function buildModelStub(info: SchemaInfo): string {
   const lines: string[] = [];
+  const schemaPath = `${info.appName}/schemas/${info.modelName}`;
 
-  lines.push(
-    `export type { ${info.typeAliasName} as default } from '${info.appName}/schemas/${info.modelName}';`,
-  );
+  if (info.isTypeScript) {
+    lines.push(
+      `export type { ${info.typeAliasName} as default } from '${schemaPath}';`,
+    );
+  } else {
+    lines.push(
+      `export { default } from '${schemaPath}';`,
+    );
+  }
 
   // Re-export named exports
   // Runtime values (enums, consts, functions, classes) use `export { Name }`.
-  // Type-only exports (interfaces, type aliases) use `export type { Name }`.
+  // Type-only exports (interfaces, type aliases) use `export type { Name }` (TS only).
   const VALUE_EXPORT_KINDS = new Set([
     'TSEnumDeclaration',
     'enum',
@@ -151,11 +169,12 @@ export function buildModelStub(info: SchemaInfo): string {
   for (const exp of info.namedExports) {
     if (VALUE_EXPORT_KINDS.has(exp.kind)) {
       lines.push(
-        `export { ${exp.name} } from '${info.appName}/schemas/${info.modelName}';`,
+        `export { ${exp.name} } from '${schemaPath}';`,
       );
-    } else {
+    } else if (info.isTypeScript) {
+      // Type-only re-exports only make sense in TS
       lines.push(
-        `export type { ${exp.name} } from '${info.appName}/schemas/${info.modelName}';`,
+        `export type { ${exp.name} } from '${schemaPath}';`,
       );
     }
   }
@@ -167,48 +186,58 @@ export function buildModelStub(info: SchemaInfo): string {
 
 function collectImports(info: SchemaInfo): string[] {
   const imports: string[] = [];
+  const isTS = info.isTypeScript;
 
   // Core schema construction imports
   imports.push(
     `import { withDefaults } from '@warp-drive/legacy/model/migration-support';`,
   );
-  imports.push(
-    `import type { LegacyResourceSchema } from '@warp-drive/core/types/schema/fields';`,
-  );
+  if (isTS) {
+    imports.push(
+      `import type { LegacyResourceSchema } from '@warp-drive/core/types/schema/fields';`,
+    );
+  }
 
   // Type symbol import — value import (not `import type`) because [Type] is used as
   // a computed property key in the Self interface, which requires the runtime symbol value.
-  imports.push(
-    `import { Type } from '@warp-drive/core/types/symbols';`,
-  );
+  // Only needed in TS mode (JS mode skips the Self interface).
+  if (isTS) {
+    imports.push(
+      `import { Type } from '@warp-drive/core/types/symbols';`,
+    );
+  }
 
-  if (info.features.length > 0 || info.services.length > 0) {
+  if (isTS && (info.features.length > 0 || info.services.length > 0)) {
     imports.push(
       `import type { CAUTION_MEGA_DANGER_ZONE_Extension } from '@warp-drive/core/reactive';`,
     );
   }
 
-  // Collect custom transform imports
-  const transformImports = new Map<string, Set<string>>();
-  for (const field of info.fields) {
-    if (field.type && info.customTransforms[field.type]) {
-      const ct = info.customTransforms[field.type];
-      if (ct.importFrom) {
-        if (!transformImports.has(ct.importFrom)) {
-          transformImports.set(ct.importFrom, new Set());
+  // Collect custom transform imports (type-only, TS only)
+  if (isTS) {
+    const transformImports = new Map<string, Set<string>>();
+    for (const field of info.fields) {
+      if (field.type && info.customTransforms[field.type]) {
+        const ct = info.customTransforms[field.type];
+        if (ct.importFrom) {
+          if (!transformImports.has(ct.importFrom)) {
+            transformImports.set(ct.importFrom, new Set());
+          }
+          transformImports.get(ct.importFrom)!.add(ct.tsType);
         }
-        transformImports.get(ct.importFrom)!.add(ct.tsType);
       }
     }
-  }
-  for (const [source, types] of transformImports) {
-    imports.push(`import type { ${[...types].join(', ')} } from '${source}';`);
+    for (const [source, types] of transformImports) {
+      imports.push(`import type { ${[...types].join(', ')} } from '${source}';`);
+    }
   }
 
-  // WithLegacy type
-  imports.push(
-    `import type { WithLegacy } from '@warp-drive/legacy/model/migration-support';`,
-  );
+  // WithLegacy type (TS only)
+  if (isTS) {
+    imports.push(
+      `import type { WithLegacy } from '@warp-drive/legacy/model/migration-support';`,
+    );
+  }
 
   // Collect relationship type names that need to be imported
   const relTypeNames = new Set<string>();
@@ -224,7 +253,11 @@ function collectImports(info: SchemaInfo): string[] {
       const kebab = info.fields.find(
         (f) => (f.kind === 'belongsTo' || f.kind === 'hasMany') && f.type && toPascalCase(f.type) === typeName,
       )?.type;
-      imports.push(`//   import type { ${typeName} } from '${info.appName}/schemas/${kebab}';`);
+      if (isTS) {
+        imports.push(`//   import type { ${typeName} } from '${info.appName}/schemas/${kebab}';`);
+      } else {
+        imports.push(`//   import { ${typeName} } from '${info.appName}/schemas/${kebab}';`);
+      }
     }
   }
 
@@ -307,7 +340,11 @@ function buildSchemaConst(info: SchemaInfo): string {
     lines.push(`  objectExtensions: ['${info.modelName}-ext'],`);
   }
 
-  lines.push(`}) as LegacyResourceSchema;`);
+  if (info.isTypeScript) {
+    lines.push(`}) as LegacyResourceSchema;`);
+  } else {
+    lines.push(`});`);
+  }
 
   return lines.join('\n');
 }
@@ -364,7 +401,11 @@ function buildLocalFieldEntry(local: LocalField): string {
 function buildExtension(info: SchemaInfo): string {
   const lines: string[] = [];
 
-  lines.push(`export const ${info.extensionVarName}: CAUTION_MEGA_DANGER_ZONE_Extension = {`);
+  if (info.isTypeScript) {
+    lines.push(`export const ${info.extensionVarName}: CAUTION_MEGA_DANGER_ZONE_Extension = {`);
+  } else {
+    lines.push(`export const ${info.extensionVarName} = {`);
+  }
   lines.push(`  kind: 'object',`);
   lines.push(`  name: '${info.modelName}-ext',`);
 
@@ -389,11 +430,15 @@ function buildExtension(info: SchemaInfo): string {
 
 function buildFeatureEntry(feature: ExtensionFeature, info: SchemaInfo): string {
   const lines: string[] = [];
+  const isTS = info.isTypeScript;
+  const selfCast = isTS
+    ? `const self = this as unknown as ${info.selfTypeName};`
+    : `const self = this;`;
 
   switch (feature.featureKind) {
     case 'getter':
       lines.push(`    get ${feature.name}() {`);
-      lines.push(`      const self = this as unknown as ${info.selfTypeName};`);
+      lines.push(`      ${selfCast}`);
       // M12: If the original getter had @cached, emit a note so developers know
       if (feature.isCached) {
         lines.push(`      // NOTE: Was @cached in original model`);
@@ -406,8 +451,12 @@ function buildFeatureEntry(feature: ExtensionFeature, info: SchemaInfo): string 
       break;
 
     case 'setter':
-      lines.push(`    set ${feature.name}(value: any) {`);
-      lines.push(`      const self = this as unknown as ${info.selfTypeName};`);
+      if (isTS) {
+        lines.push(`    set ${feature.name}(value: any) {`);
+      } else {
+        lines.push(`    set ${feature.name}(value) {`);
+      }
+      lines.push(`      ${selfCast}`);
       lines.push(`      // TODO: Rewrite this.propName → self.propName`);
       lines.push(`      // Original body:`);
       lines.push(`      ${formatBody(feature.body)}`);
@@ -415,8 +464,12 @@ function buildFeatureEntry(feature: ExtensionFeature, info: SchemaInfo): string 
       break;
 
     case 'method':
-      lines.push(`    ${feature.name}(...args: any[]) {`);
-      lines.push(`      const self = this as unknown as ${info.selfTypeName};`);
+      if (isTS) {
+        lines.push(`    ${feature.name}(...args: any[]) {`);
+      } else {
+        lines.push(`    ${feature.name}(...args) {`);
+      }
+      lines.push(`      ${selfCast}`);
       lines.push(`      // TODO: Rewrite this.propName → self.propName`);
       lines.push(`      // TODO: Replace @service injections with getService(self, 'service-name')`);
       lines.push(`      // Original body:`);
@@ -426,7 +479,7 @@ function buildFeatureEntry(feature: ExtensionFeature, info: SchemaInfo): string 
 
     case 'getter-closure':
       lines.push(`    get ${feature.name}() {`);
-      lines.push(`      const self = this as unknown as ${info.selfTypeName};`);
+      lines.push(`      ${selfCast}`);
       lines.push(`      // TODO: This was an @action — rewrite as getter returning closure`);
       lines.push(`      // TODO: Rewrite this.propName → self.propName`);
       lines.push(`      // Original body:`);

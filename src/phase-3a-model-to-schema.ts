@@ -76,9 +76,11 @@ function transformer(
     return undefined; // Skip, keep as legacy Model
   }
 
-  // 3. Extract model name from file path
+  // 3. Extract model name and file extension from file path
   const modelName = deriveModelName(fileInfo.path);
   if (!modelName) return undefined;
+  const sourceExt = path.extname(fileInfo.path);
+  const isTypeScript = sourceExt === '.ts' || sourceExt === '.gts';
 
   // 4. Detect parent class
   const parentClassName = getParentClassName(j, classDecl);
@@ -114,6 +116,7 @@ function transformer(
     parentClass: parentClassName,
     appName,
     customTransforms,
+    isTypeScript,
   };
 
   // 8. Generate schema file content
@@ -125,7 +128,7 @@ function transformer(
   // 10. Write schema file
   if (!dryRun) {
     const schemasDir = opts.schemasDir ?? resolveSchemaDir(fileInfo.path);
-    const schemaFilePath = path.join(schemasDir, `${modelName}.ts`);
+    const schemaFilePath = path.join(schemasDir, `${modelName}${sourceExt}`);
 
     // Ensure directory exists
     const schemaFileDir = path.dirname(schemaFilePath);

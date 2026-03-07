@@ -13,6 +13,28 @@ import {
   buildModelStub,
   classifyMembersForSchema,
 } from '../src/utils/schema-builder';
+import type { SchemaInfo } from '../src/utils/schema-builder';
+
+function makeSchemaInfo(overrides: Partial<SchemaInfo> & { modelName: string }): SchemaInfo {
+  const pascal = toPascalCase(overrides.modelName);
+  return {
+    className: pascal,
+    schemaVarName: `${pascal}Schema`,
+    extensionVarName: `${pascal}Extension`,
+    selfTypeName: `${pascal}Self`,
+    typeAliasName: pascal,
+    fields: [],
+    localFields: [],
+    services: [],
+    features: [],
+    namedExports: [],
+    parentClass: 'Model',
+    appName: 'brn',
+    customTransforms: {},
+    isTypeScript: true,
+    ...overrides,
+  };
+}
 
 function runTransform(
   input: string,
@@ -668,22 +690,10 @@ describe('Schema Builder Utilities', () => {
 
   describe('buildSchemaFile', () => {
     it('should generate correct imports', () => {
-      const info = {
+      const info = makeSchemaInfo({
         modelName: 'exercise',
-        className: 'Exercise',
-        schemaVarName: 'ExerciseSchema',
-        extensionVarName: 'ExerciseExtension',
-        selfTypeName: 'ExerciseSelf',
-        typeAliasName: 'Exercise',
-        fields: [{ kind: 'attribute' as const, name: 'name', type: 'string' }],
-        localFields: [],
-        services: [],
-        features: [],
-        namedExports: [],
-        parentClass: 'Model',
-        appName: 'brn',
-        customTransforms: {},
-      };
+        fields: [{ kind: 'attribute', name: 'name', type: 'string' }],
+      });
       const output = buildSchemaFile(info);
       expect(output).toContain("from '@warp-drive/legacy/model/migration-support'");
       expect(output).toContain("from '@warp-drive/core/types/schema/fields'");
@@ -691,222 +701,96 @@ describe('Schema Builder Utilities', () => {
     });
 
     it('should include CAUTION_MEGA_DANGER_ZONE_Extension import when features exist', () => {
-      const info = {
+      const info = makeSchemaInfo({
         modelName: 'group',
-        className: 'Group',
-        schemaVarName: 'GroupSchema',
-        extensionVarName: 'GroupExtension',
-        selfTypeName: 'GroupSelf',
-        typeAliasName: 'Group',
-        fields: [{ kind: 'attribute' as const, name: 'name', type: 'string' }],
-        localFields: [],
-        services: [],
-        features: [{ featureKind: 'getter' as const, name: 'displayName', body: '{ return this.name; }' }],
-        namedExports: [],
-        parentClass: 'Model',
-        appName: 'brn',
-        customTransforms: {},
-      };
+        fields: [{ kind: 'attribute', name: 'name', type: 'string' }],
+        features: [{ featureKind: 'getter', name: 'displayName', body: '{ return this.name; }' }],
+      });
       const output = buildSchemaFile(info);
       expect(output).toContain("CAUTION_MEGA_DANGER_ZONE_Extension");
       expect(output).toContain("from '@warp-drive/core/reactive'");
     });
 
     it('should add objectExtensions to schema when extensions exist', () => {
-      const info = {
+      const info = makeSchemaInfo({
         modelName: 'group',
-        className: 'Group',
-        schemaVarName: 'GroupSchema',
-        extensionVarName: 'GroupExtension',
-        selfTypeName: 'GroupSelf',
-        typeAliasName: 'Group',
-        fields: [],
-        localFields: [],
-        services: [],
-        features: [{ featureKind: 'getter' as const, name: 'displayName', body: '{ return this.name; }' }],
-        namedExports: [],
-        parentClass: 'Model',
-        appName: 'brn',
-        customTransforms: {},
-      };
+        features: [{ featureKind: 'getter', name: 'displayName', body: '{ return this.name; }' }],
+      });
       const output = buildSchemaFile(info);
       expect(output).toContain("objectExtensions: ['group-ext']");
     });
 
     it('should NOT add objectExtensions when no extensions', () => {
-      const info = {
+      const info = makeSchemaInfo({
         modelName: 'exercise',
-        className: 'Exercise',
-        schemaVarName: 'ExerciseSchema',
-        extensionVarName: 'ExerciseExtension',
-        selfTypeName: 'ExerciseSelf',
-        typeAliasName: 'Exercise',
-        fields: [{ kind: 'attribute' as const, name: 'name', type: 'string' }],
-        localFields: [],
-        services: [],
-        features: [],
-        namedExports: [],
-        parentClass: 'Model',
-        appName: 'brn',
-        customTransforms: {},
-      };
+        fields: [{ kind: 'attribute', name: 'name', type: 'string' }],
+      });
       const output = buildSchemaFile(info);
       expect(output).not.toContain('objectExtensions');
     });
 
     it('should generate extension as typed object (not function call)', () => {
-      const info = {
+      const info = makeSchemaInfo({
         modelName: 'group',
-        className: 'Group',
-        schemaVarName: 'GroupSchema',
-        extensionVarName: 'GroupExtension',
-        selfTypeName: 'GroupSelf',
-        typeAliasName: 'Group',
-        fields: [],
-        localFields: [],
-        services: [],
-        features: [{ featureKind: 'getter' as const, name: 'displayName', body: '{ return this.name; }' }],
-        namedExports: [],
-        parentClass: 'Model',
-        appName: 'brn',
-        customTransforms: {},
-      };
+        features: [{ featureKind: 'getter', name: 'displayName', body: '{ return this.name; }' }],
+      });
       const output = buildSchemaFile(info);
-      // Should use type annotation, not function call
       expect(output).toContain('GroupExtension: CAUTION_MEGA_DANGER_ZONE_Extension = {');
       expect(output).toContain("kind: 'object'");
-      // Should NOT be called as function
       expect(output).not.toContain('CAUTION_MEGA_DANGER_ZONE_Extension({');
     });
 
     it('should include @local fields inline in the fields array', () => {
-      const info = {
+      const info = makeSchemaInfo({
         modelName: 'group',
-        className: 'Group',
-        schemaVarName: 'GroupSchema',
-        extensionVarName: 'GroupExtension',
-        selfTypeName: 'GroupSelf',
-        typeAliasName: 'Group',
-        fields: [{ kind: 'attribute' as const, name: 'name', type: 'string' }],
-        localFields: [{ kind: '@local' as const, name: 'isActive', defaultValue: 'false', tsType: 'boolean' }],
-        services: [],
-        features: [],
-        namedExports: [],
-        parentClass: 'Model',
-        appName: 'brn',
-        customTransforms: {},
-      };
+        fields: [{ kind: 'attribute', name: 'name', type: 'string' }],
+        localFields: [{ kind: '@local', name: 'isActive', defaultValue: 'false', tsType: 'boolean' }],
+      });
       const output = buildSchemaFile(info);
       expect(output).toContain("{ kind: '@local', name: 'isActive', options: { defaultValue: false } }");
-      // Should NOT use post-push pattern
       expect(output).not.toContain('fields.push');
     });
 
     it('should include service TODO comments', () => {
-      const info = {
+      const info = makeSchemaInfo({
         modelName: 'exercise',
-        className: 'Exercise',
-        schemaVarName: 'ExerciseSchema',
-        extensionVarName: 'ExerciseExtension',
-        selfTypeName: 'ExerciseSelf',
-        typeAliasName: 'Exercise',
-        fields: [],
-        localFields: [],
         services: [{ name: 'audioService', serviceName: 'audio' }],
-        features: [{ featureKind: 'getter' as const, name: 'isReady', body: '{ return true; }' }],
-        namedExports: [],
-        parentClass: 'Model',
-        appName: 'brn',
-        customTransforms: {},
-      };
+        features: [{ featureKind: 'getter', name: 'isReady', body: '{ return true; }' }],
+      });
       const output = buildSchemaFile(info);
       expect(output).toContain("TODO: Wire services manually");
       expect(output).toContain("@service('audio') audioService");
     });
 
     it('should include custom transform type imports', () => {
-      const info = {
+      const info = makeSchemaInfo({
         modelName: 'task',
-        className: 'Task',
-        schemaVarName: 'TaskSchema',
-        extensionVarName: 'TaskExtension',
-        selfTypeName: 'TaskSelf',
-        typeAliasName: 'Task',
-        fields: [{ kind: 'attribute' as const, name: 'startDate', type: 'full-date' }],
-        localFields: [],
-        services: [],
-        features: [],
-        namedExports: [],
-        parentClass: 'Model',
-        appName: 'brn',
+        fields: [{ kind: 'attribute', name: 'startDate', type: 'full-date' }],
         customTransforms: {
           'full-date': { tsType: 'DateTime', importFrom: 'luxon' },
         },
-      };
+      });
       const output = buildSchemaFile(info);
       expect(output).toContain("import type { DateTime } from 'luxon'");
     });
 
     it('should include [Type] property in Self interface', () => {
-      const info = {
+      const info = makeSchemaInfo({
         modelName: 'exercise',
-        className: 'Exercise',
-        schemaVarName: 'ExerciseSchema',
-        extensionVarName: 'ExerciseExtension',
-        selfTypeName: 'ExerciseSelf',
-        typeAliasName: 'Exercise',
-        fields: [{ kind: 'attribute' as const, name: 'name', type: 'string' }],
-        localFields: [],
-        services: [],
-        features: [],
-        namedExports: [],
-        parentClass: 'Model',
-        appName: 'brn',
-        customTransforms: {},
-      };
+        fields: [{ kind: 'attribute', name: 'name', type: 'string' }],
+      });
       const output = buildSchemaFile(info);
-      // Self interface must include [Type] for WithLegacy constraint
       expect(output).toContain("[Type]: 'exercise'");
     });
 
     it('should import Type from @warp-drive/core/types/symbols', () => {
-      const info = {
-        modelName: 'exercise',
-        className: 'Exercise',
-        schemaVarName: 'ExerciseSchema',
-        extensionVarName: 'ExerciseExtension',
-        selfTypeName: 'ExerciseSelf',
-        typeAliasName: 'Exercise',
-        fields: [],
-        localFields: [],
-        services: [],
-        features: [],
-        namedExports: [],
-        parentClass: 'Model',
-        appName: 'brn',
-        customTransforms: {},
-      };
+      const info = makeSchemaInfo({ modelName: 'exercise' });
       const output = buildSchemaFile(info);
       expect(output).toContain("import { Type } from '@warp-drive/core/types/symbols'");
     });
 
     it('should include registration TODO comments', () => {
-      const info = {
-        modelName: 'exercise',
-        className: 'Exercise',
-        schemaVarName: 'ExerciseSchema',
-        extensionVarName: 'ExerciseExtension',
-        selfTypeName: 'ExerciseSelf',
-        typeAliasName: 'Exercise',
-        fields: [],
-        localFields: [],
-        services: [],
-        features: [],
-        namedExports: [],
-        parentClass: 'Model',
-        appName: 'brn',
-        customTransforms: {},
-      };
+      const info = makeSchemaInfo({ modelName: 'exercise' });
       const output = buildSchemaFile(info);
       expect(output).toContain('TODO: Register this schema');
       expect(output).toContain('store.schema.registerResource(ExerciseSchema)');
@@ -914,46 +798,25 @@ describe('Schema Builder Utilities', () => {
     });
 
     it('should include registerExtension TODO when features exist', () => {
-      const info = {
+      const info = makeSchemaInfo({
         modelName: 'group',
-        className: 'Group',
-        schemaVarName: 'GroupSchema',
-        extensionVarName: 'GroupExtension',
-        selfTypeName: 'GroupSelf',
-        typeAliasName: 'Group',
-        fields: [],
-        localFields: [],
-        services: [],
-        features: [{ featureKind: 'getter' as const, name: 'x', body: '{ return 1; }' }],
-        namedExports: [],
-        parentClass: 'Model',
-        appName: 'brn',
-        customTransforms: {},
-      };
+        features: [{ featureKind: 'getter', name: 'x', body: '{ return 1; }' }],
+      });
       const output = buildSchemaFile(info);
       expect(output).toContain('store.schema.CAUTION_MEGA_DANGER_ZONE_registerExtension(GroupExtension)');
     });
 
     it('should generate complete schema file with correct structure', () => {
-      const info = {
+      const info = makeSchemaInfo({
         modelName: 'group',
-        className: 'Group',
-        schemaVarName: 'GroupSchema',
-        extensionVarName: 'GroupExtension',
-        selfTypeName: 'GroupSelf',
-        typeAliasName: 'Group',
         fields: [
-          { kind: 'attribute' as const, name: 'name', type: 'string', tsType: 'string' },
-          { kind: 'belongsTo' as const, name: 'series', type: 'series', options: { async: false, inverse: null } },
+          { kind: 'attribute', name: 'name', type: 'string', tsType: 'string' },
+          { kind: 'belongsTo', name: 'series', type: 'series', options: { async: false, inverse: null } },
         ],
-        localFields: [{ kind: '@local' as const, name: 'isManuallyCompleted', defaultValue: 'false', tsType: 'boolean' }],
+        localFields: [{ kind: '@local', name: 'isManuallyCompleted', defaultValue: 'false', tsType: 'boolean' }],
         services: [{ name: 'audioService', serviceName: 'audio' }],
-        features: [{ featureKind: 'getter' as const, name: 'isCompleted', body: '{ return this.name === "done"; }' }],
-        namedExports: [],
-        parentClass: 'Model',
-        appName: 'brn',
-        customTransforms: {},
-      };
+        features: [{ featureKind: 'getter', name: 'isCompleted', body: '{ return this.name === "done"; }' }],
+      });
       const output = buildSchemaFile(info);
 
       // Imports
@@ -988,198 +851,233 @@ describe('Schema Builder Utilities', () => {
     });
 
     it('should include TODO import comments for relationship types', () => {
-      const info = {
+      const info = makeSchemaInfo({
         modelName: 'group',
-        className: 'Group',
-        schemaVarName: 'GroupSchema',
-        extensionVarName: 'GroupExtension',
-        selfTypeName: 'GroupSelf',
-        typeAliasName: 'Group',
         fields: [
-          { kind: 'attribute' as const, name: 'name', type: 'string' },
-          { kind: 'belongsTo' as const, name: 'series', type: 'series', options: { async: false, inverse: null } },
-          { kind: 'hasMany' as const, name: 'tasks', type: 'task', options: { async: false, inverse: 'group' } },
+          { kind: 'attribute', name: 'name', type: 'string' },
+          { kind: 'belongsTo', name: 'series', type: 'series', options: { async: false, inverse: null } },
+          { kind: 'hasMany', name: 'tasks', type: 'task', options: { async: false, inverse: 'group' } },
         ],
-        localFields: [],
-        services: [],
-        features: [],
-        namedExports: [],
-        parentClass: 'Model',
-        appName: 'brn',
-        customTransforms: {},
-      };
+      });
       const output = buildSchemaFile(info);
-      // Should include TODO comments for relationship type imports
       expect(output).toContain('// TODO: Import related model types:');
       expect(output).toContain("//   import type { Series } from 'brn/schemas/series';");
       expect(output).toContain("//   import type { Task } from 'brn/schemas/task';");
     });
 
     it('should use JS object literal syntax (unquoted keys) for relationship options', () => {
-      const info = {
+      const info = makeSchemaInfo({
         modelName: 'group',
-        className: 'Group',
-        schemaVarName: 'GroupSchema',
-        extensionVarName: 'GroupExtension',
-        selfTypeName: 'GroupSelf',
-        typeAliasName: 'Group',
         fields: [
-          { kind: 'belongsTo' as const, name: 'series', type: 'series', options: { async: false, inverse: null } },
-          { kind: 'hasMany' as const, name: 'tasks', type: 'task', options: { async: false, inverse: 'group' } },
+          { kind: 'belongsTo', name: 'series', type: 'series', options: { async: false, inverse: null } },
+          { kind: 'hasMany', name: 'tasks', type: 'task', options: { async: false, inverse: 'group' } },
         ],
-        localFields: [],
-        services: [],
-        features: [],
-        namedExports: [],
-        parentClass: 'Model',
-        appName: 'brn',
-        customTransforms: {},
-      };
+      });
       const output = buildSchemaFile(info);
-      // Should use JS object literal syntax with unquoted keys
       expect(output).toContain('options: { async: false, inverse: null }');
       expect(output).toContain("options: { async: false, inverse: 'group' }");
-      // Should NOT use JSON.stringify style with double-quoted keys
       expect(output).not.toContain('"async"');
       expect(output).not.toContain('"inverse"');
     });
 
     it('should NOT include relationship TODO comments when no relationships exist', () => {
-      const info = {
+      const info = makeSchemaInfo({
         modelName: 'exercise',
-        className: 'Exercise',
-        schemaVarName: 'ExerciseSchema',
-        extensionVarName: 'ExerciseExtension',
-        selfTypeName: 'ExerciseSelf',
-        typeAliasName: 'Exercise',
-        fields: [
-          { kind: 'attribute' as const, name: 'name', type: 'string' },
-        ],
-        localFields: [],
-        services: [],
-        features: [],
-        namedExports: [],
-        parentClass: 'Model',
-        appName: 'brn',
-        customTransforms: {},
-      };
+        fields: [{ kind: 'attribute', name: 'name', type: 'string' }],
+      });
       const output = buildSchemaFile(info);
       expect(output).not.toContain('// TODO: Import related model types:');
     });
 
-    // M10: @attr rawOptions should emit a TODO comment
     it('should emit TODO comment when @attr has rawOptions (defaultValue)', () => {
-      const info = {
+      const info = makeSchemaInfo({
         modelName: 'exercise',
-        className: 'Exercise',
-        schemaVarName: 'ExerciseSchema',
-        extensionVarName: 'ExerciseExtension',
-        selfTypeName: 'ExerciseSelf',
-        typeAliasName: 'Exercise',
-        fields: [
-          { kind: 'attribute' as const, name: 'name', type: 'string', rawOptions: "{ defaultValue: '' }" },
-        ],
-        localFields: [],
-        services: [],
-        features: [],
-        namedExports: [],
-        parentClass: 'Model',
-        appName: 'brn',
-        customTransforms: {},
-      };
+        fields: [{ kind: 'attribute', name: 'name', type: 'string', rawOptions: "{ defaultValue: '' }" }],
+      });
       const output = buildSchemaFile(info);
       expect(output).toContain("/* TODO: defaultValue was { defaultValue: '' }");
       expect(output).toContain('handle at handler/transform layer */');
     });
 
     it('should NOT emit TODO comment when @attr has no rawOptions', () => {
-      const info = {
+      const info = makeSchemaInfo({
         modelName: 'exercise',
-        className: 'Exercise',
-        schemaVarName: 'ExerciseSchema',
-        extensionVarName: 'ExerciseExtension',
-        selfTypeName: 'ExerciseSelf',
-        typeAliasName: 'Exercise',
-        fields: [
-          { kind: 'attribute' as const, name: 'name', type: 'string' },
-        ],
-        localFields: [],
-        services: [],
-        features: [],
-        namedExports: [],
-        parentClass: 'Model',
-        appName: 'brn',
-        customTransforms: {},
-      };
+        fields: [{ kind: 'attribute', name: 'name', type: 'string' }],
+      });
       const output = buildSchemaFile(info);
       expect(output).not.toContain('TODO: defaultValue was');
     });
 
-    // M12: @cached getter should emit a NOTE comment in the extension
     it('should emit NOTE comment when getter had @cached', () => {
-      const info = {
+      const info = makeSchemaInfo({
         modelName: 'group',
-        className: 'Group',
-        schemaVarName: 'GroupSchema',
-        extensionVarName: 'GroupExtension',
-        selfTypeName: 'GroupSelf',
-        typeAliasName: 'Group',
-        fields: [],
-        localFields: [],
-        services: [],
-        features: [{ featureKind: 'getter' as const, name: 'expensiveValue', body: '{ return compute(); }', isCached: true }],
-        namedExports: [],
-        parentClass: 'Model',
-        appName: 'brn',
-        customTransforms: {},
-      };
+        features: [{ featureKind: 'getter', name: 'expensiveValue', body: '{ return compute(); }', isCached: true }],
+      });
       const output = buildSchemaFile(info);
       expect(output).toContain('// NOTE: Was @cached in original model');
     });
 
     it('should NOT emit @cached NOTE for non-cached getters', () => {
-      const info = {
+      const info = makeSchemaInfo({
         modelName: 'group',
-        className: 'Group',
-        schemaVarName: 'GroupSchema',
-        extensionVarName: 'GroupExtension',
-        selfTypeName: 'GroupSelf',
-        typeAliasName: 'Group',
-        fields: [],
-        localFields: [],
-        services: [],
-        features: [{ featureKind: 'getter' as const, name: 'displayName', body: '{ return this.name; }', isCached: false }],
-        namedExports: [],
-        parentClass: 'Model',
-        appName: 'brn',
-        customTransforms: {},
-      };
+        features: [{ featureKind: 'getter', name: 'displayName', body: '{ return this.name; }', isCached: false }],
+      });
       const output = buildSchemaFile(info);
       expect(output).not.toContain('// NOTE: Was @cached in original model');
     });
   });
 
+  describe('buildSchemaFile (JS output)', () => {
+    it('should omit type-only imports for JS', () => {
+      const info = makeSchemaInfo({
+        modelName: 'exercise',
+        isTypeScript: false,
+        fields: [{ kind: 'attribute', name: 'name', type: 'string' }],
+      });
+      const output = buildSchemaFile(info);
+      expect(output).toContain("import { withDefaults } from '@warp-drive/legacy/model/migration-support'");
+      expect(output).not.toContain('import type');
+      expect(output).not.toContain('LegacyResourceSchema');
+      expect(output).not.toContain('WithLegacy');
+    });
+
+    it('should not import Type symbol for JS (only used in Self interface)', () => {
+      const info = makeSchemaInfo({
+        modelName: 'exercise',
+        isTypeScript: false,
+      });
+      const output = buildSchemaFile(info);
+      expect(output).not.toContain('Type');
+      expect(output).not.toContain('@warp-drive/core/types/symbols');
+    });
+
+    it('should omit Self interface for JS', () => {
+      const info = makeSchemaInfo({
+        modelName: 'exercise',
+        isTypeScript: false,
+        fields: [{ kind: 'attribute', name: 'name', type: 'string' }],
+      });
+      const output = buildSchemaFile(info);
+      expect(output).not.toContain('interface ExerciseSelf');
+    });
+
+    it('should omit as LegacyResourceSchema cast for JS', () => {
+      const info = makeSchemaInfo({
+        modelName: 'exercise',
+        isTypeScript: false,
+        fields: [{ kind: 'attribute', name: 'name', type: 'string' }],
+      });
+      const output = buildSchemaFile(info);
+      expect(output).not.toContain('as LegacyResourceSchema');
+      expect(output).toContain('});');
+    });
+
+    it('should omit type annotation on extension for JS', () => {
+      const info = makeSchemaInfo({
+        modelName: 'group',
+        isTypeScript: false,
+        features: [{ featureKind: 'getter', name: 'displayName', body: '{ return this.name; }' }],
+      });
+      const output = buildSchemaFile(info);
+      expect(output).toContain('export const GroupExtension = {');
+      expect(output).not.toContain('CAUTION_MEGA_DANGER_ZONE_Extension');
+    });
+
+    it('should use default export instead of type alias for JS', () => {
+      const info = makeSchemaInfo({
+        modelName: 'exercise',
+        isTypeScript: false,
+        fields: [{ kind: 'attribute', name: 'name', type: 'string' }],
+      });
+      const output = buildSchemaFile(info);
+      expect(output).toContain('export default ExerciseSchema;');
+      expect(output).not.toContain('export type');
+    });
+
+    it('should use const self = this instead of TS cast in extensions for JS', () => {
+      const info = makeSchemaInfo({
+        modelName: 'group',
+        isTypeScript: false,
+        features: [{ featureKind: 'getter', name: 'displayName', body: '{ return this.name; }' }],
+      });
+      const output = buildSchemaFile(info);
+      expect(output).toContain('const self = this;');
+      expect(output).not.toContain('as unknown as');
+    });
+
+    it('should omit type annotations on setter params for JS', () => {
+      const info = makeSchemaInfo({
+        modelName: 'group',
+        isTypeScript: false,
+        features: [{ featureKind: 'setter', name: 'label', body: '{ this.name = value; }' }],
+      });
+      const output = buildSchemaFile(info);
+      expect(output).toContain('set label(value) {');
+      expect(output).not.toContain('value: any');
+    });
+
+    it('should omit type annotations on method params for JS', () => {
+      const info = makeSchemaInfo({
+        modelName: 'group',
+        isTypeScript: false,
+        features: [{ featureKind: 'method', name: 'doSomething', body: '{ return 1; }' }],
+      });
+      const output = buildSchemaFile(info);
+      expect(output).toContain('doSomething(...args) {');
+      expect(output).not.toContain('args: any[]');
+    });
+
+    it('should skip type-only named exports in JS schema file', () => {
+      const info = makeSchemaInfo({
+        modelName: 'exercise',
+        isTypeScript: false,
+        namedExports: [
+          { name: 'IStatsObject', kind: 'interface', sourceText: 'export interface IStatsObject {}' },
+          { name: 'SOME_CONST', kind: 'VariableDeclaration', sourceText: "export const SOME_CONST = 'foo';" },
+        ],
+      });
+      const output = buildSchemaFile(info);
+      expect(output).not.toContain('IStatsObject');
+      expect(output).toContain("export const SOME_CONST = 'foo';");
+    });
+
+    it('should use import (not import type) in relationship TODO comments for JS', () => {
+      const info = makeSchemaInfo({
+        modelName: 'group',
+        isTypeScript: false,
+        fields: [
+          { kind: 'belongsTo', name: 'series', type: 'series', options: { async: false, inverse: null } },
+        ],
+      });
+      const output = buildSchemaFile(info);
+      expect(output).toContain("//   import { Series } from 'brn/schemas/series';");
+      expect(output).not.toContain('import type { Series }');
+    });
+
+    it('should skip custom transform type imports for JS', () => {
+      const info = makeSchemaInfo({
+        modelName: 'task',
+        isTypeScript: false,
+        fields: [{ kind: 'attribute', name: 'startDate', type: 'full-date' }],
+        customTransforms: {
+          'full-date': { tsType: 'DateTime', importFrom: 'luxon' },
+        },
+      });
+      const output = buildSchemaFile(info);
+      expect(output).not.toContain('import type');
+      expect(output).not.toContain('DateTime');
+    });
+  });
+
   describe('buildModelStub', () => {
     it('should use value re-export for enum named exports', () => {
-      const info = {
+      const info = makeSchemaInfo({
         modelName: 'exercise',
-        className: 'Exercise',
-        schemaVarName: 'ExerciseSchema',
-        extensionVarName: 'ExerciseExtension',
-        selfTypeName: 'ExerciseSelf',
-        typeAliasName: 'Exercise',
-        fields: [],
-        localFields: [],
-        services: [],
-        features: [],
         namedExports: [
           { name: 'ExerciseType', kind: 'TSEnumDeclaration', sourceText: 'export enum ExerciseType { A = "A" }' },
           { name: 'IStatsObject', kind: 'interface', sourceText: 'export interface IStatsObject {}' },
         ],
-        parentClass: 'Model',
-        appName: 'brn',
-        customTransforms: {},
-      };
+      });
       const output = buildModelStub(info);
       expect(output).toContain("export { ExerciseType } from 'brn/schemas/exercise'");
       expect(output).not.toContain("export type { ExerciseType }");
@@ -1187,25 +1085,88 @@ describe('Schema Builder Utilities', () => {
     });
 
     it('should generate correct re-export', () => {
-      const info = {
+      const info = makeSchemaInfo({
         modelName: 'exercise',
-        className: 'Exercise',
-        schemaVarName: 'ExerciseSchema',
-        extensionVarName: 'ExerciseExtension',
-        selfTypeName: 'ExerciseSelf',
-        typeAliasName: 'Exercise',
-        fields: [],
-        localFields: [],
-        services: [],
-        features: [],
         namedExports: [{ name: 'IStatsObject', kind: 'interface', sourceText: 'export interface IStatsObject {}' }],
-        parentClass: 'Model',
-        appName: 'brn',
-        customTransforms: {},
-      };
+      });
       const output = buildModelStub(info);
       expect(output).toContain("export type { Exercise as default } from 'brn/schemas/exercise'");
       expect(output).toContain("export type { IStatsObject } from 'brn/schemas/exercise'");
+    });
+  });
+
+  describe('buildModelStub (JS output)', () => {
+    it('should use export { default } instead of export type for JS', () => {
+      const info = makeSchemaInfo({
+        modelName: 'exercise',
+        isTypeScript: false,
+      });
+      const output = buildModelStub(info);
+      expect(output).toContain("export { default } from 'brn/schemas/exercise'");
+      expect(output).not.toContain('export type');
+    });
+
+    it('should skip type-only named exports in JS stub', () => {
+      const info = makeSchemaInfo({
+        modelName: 'exercise',
+        isTypeScript: false,
+        namedExports: [
+          { name: 'ExerciseType', kind: 'TSEnumDeclaration', sourceText: 'export enum ExerciseType { A = "A" }' },
+          { name: 'IStatsObject', kind: 'interface', sourceText: 'export interface IStatsObject {}' },
+        ],
+      });
+      const output = buildModelStub(info);
+      expect(output).toContain("export { ExerciseType } from 'brn/schemas/exercise'");
+      expect(output).not.toContain('IStatsObject');
+      expect(output).not.toContain('export type');
+    });
+  });
+
+  describe('Phase 3a JS file handling', () => {
+    it('should generate JS model stub for .js input file', () => {
+      const input = `import Model, { attr } from '@warp-drive/legacy/model';
+
+export default class Signal extends Model {
+  @attr('string') name;
+}`;
+      const result = runTransform(input, 'app/models/signal.js');
+      expect(result).toContain("export { default } from 'brn/schemas/signal'");
+      expect(result).not.toContain('export type');
+    });
+
+    it('should generate TS model stub for .ts input file', () => {
+      const input = `import Model, { attr } from '@warp-drive/legacy/model';
+import { Type } from '@warp-drive/core/types/symbols';
+
+export default class Signal extends Model {
+  declare [Type]: 'signal';
+  @attr('string') name!: string;
+}`;
+      const result = runTransform(input, 'app/models/signal.ts');
+      expect(result).toContain("export type { Signal as default } from 'brn/schemas/signal'");
+    });
+
+    it('should generate JS model stub for .gjs input file', () => {
+      const input = `import Model, { attr } from '@warp-drive/legacy/model';
+
+export default class Signal extends Model {
+  @attr('string') name;
+}`;
+      const result = runTransform(input, 'app/models/signal.gjs');
+      expect(result).toContain("export { default } from 'brn/schemas/signal'");
+      expect(result).not.toContain('export type');
+    });
+
+    it('should generate TS model stub for .gts input file', () => {
+      const input = `import Model, { attr } from '@warp-drive/legacy/model';
+import { Type } from '@warp-drive/core/types/symbols';
+
+export default class Signal extends Model {
+  declare [Type]: 'signal';
+  @attr('string') name!: string;
+}`;
+      const result = runTransform(input, 'app/models/signal.gts');
+      expect(result).toContain("export type { Signal as default } from 'brn/schemas/signal'");
     });
   });
 });

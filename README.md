@@ -27,10 +27,10 @@ Automates the bulk of a multi-phase migration that typically touches 90+ files. 
 
 ```bash
 # Run all default phases (0, 1, 3a, 2a, 3b):
-npx ember-data-codemod --target=frontend/app
+npx ember-data-to-warp-drive-codemod --target=frontend/app
 
 # Dry run (preview changes without writing):
-npx ember-data-codemod --target=frontend/app --dry-run
+npx ember-data-to-warp-drive-codemod --target=frontend/app --dry-run
 
 # Then: manual steps (store, handlers, extensions, inverse values)
 ```
@@ -45,19 +45,19 @@ Instead of running 6 separate commands, use the unified CLI:
 
 ```bash
 # Run all default phases (0, 1, 3a, 2a, 3b):
-npx ember-data-codemod --target=frontend/app
+npx ember-data-to-warp-drive-codemod --target=frontend/app
 
 # Run specific phases:
-npx ember-data-codemod --target=frontend/app --phases=0,1
+npx ember-data-to-warp-drive-codemod --target=frontend/app --phases=0,1
 
 # Dry run (preview changes without writing):
-npx ember-data-codemod --target=frontend/app --dry-run
+npx ember-data-to-warp-drive-codemod --target=frontend/app --dry-run
 
 # Phase 4 is opt-in (only needed for mirror packages):
-npx ember-data-codemod --target=frontend/app --phases=0,1,3a,2a,3b,4
+npx ember-data-to-warp-drive-codemod --target=frontend/app --phases=0,1,3a,2a,3b,4
 
 # Override auto-detected app name:
-npx ember-data-codemod --target=frontend/app --appName=myapp
+npx ember-data-to-warp-drive-codemod --target=frontend/app --appName=myapp
 ```
 
 ### CLI Options
@@ -108,16 +108,16 @@ The CLI validates options before running:
 After running the codemods, scan for common issues that need manual attention:
 
 ```bash
-npx ember-data-codemod --post-check --target=frontend/app
+npx ember-data-to-warp-drive-codemod --post-check --target=frontend/app
 
 # Verbose mode (show all file locations):
-npx ember-data-codemod --post-check --target=frontend/app --verbose
+npx ember-data-to-warp-drive-codemod --post-check --target=frontend/app --verbose
 
 # Strict mode (warnings treated as failures, exits non-zero):
-npx ember-data-codemod --post-check --target=frontend/app --strict
+npx ember-data-to-warp-drive-codemod --post-check --target=frontend/app --strict
 
 # JSON output (for CI integration):
-npx ember-data-codemod --post-check --target=frontend/app --json
+npx ember-data-to-warp-drive-codemod --post-check --target=frontend/app --json
 ```
 
 ### Checks Performed
@@ -227,7 +227,7 @@ npx ember-data-codemod --post-check --target=frontend/app --json
 Remove deprecated Ember/ember-data APIs before the actual migration.
 
 ```bash
-npx ember-data-codemod --target=frontend/app --phases=0
+npx ember-data-to-warp-drive-codemod --target=frontend/app --phases=0
 ```
 
 ### Before / After Examples
@@ -288,7 +288,7 @@ model.belongsTo('user').value()     → model.user
 Rewrite ember-data imports to WarpDrive, add `[Type]` brand, fix relationship specs.
 
 ```bash
-npx ember-data-codemod --target=frontend/app --phases=1
+npx ember-data-to-warp-drive-codemod --target=frontend/app --phases=1
 ```
 
 **Options:** `--appName` (auto-detected from `package.json`)
@@ -355,7 +355,7 @@ declare module 'ember-data/types/registries/model' { ... }
 Update consumer files (routes, controllers, components) that reference ember-data APIs.
 
 ```bash
-npx ember-data-codemod --target=frontend/app --phases=2a
+npx ember-data-to-warp-drive-codemod --target=frontend/app --phases=2a
 ```
 
 **Options:** `--appName` (auto-detected from `package.json`)
@@ -383,7 +383,7 @@ Type-only detection covers: annotations, type references, generics, interfaces, 
 Extract model field definitions into WarpDrive schema scaffolds.
 
 ```bash
-npx ember-data-codemod --target=frontend/app --phases=3a
+npx ember-data-to-warp-drive-codemod --target=frontend/app --phases=3a
 ```
 
 **Options:** `--appName` (auto-detected) | `--dryRun=true` | `--schemasDir=path` | `--baseOnlyClasses=Foo,Bar`
@@ -457,7 +457,7 @@ constructor()                       →  (skipped)
 Generate `schemas/index.ts` barrel file collecting all schemas and extensions.
 
 ```bash
-npx ember-data-codemod --target=frontend/app --phases=3b
+npx ember-data-to-warp-drive-codemod --target=frontend/app --phases=3b
 ```
 
 **Output:**
@@ -479,7 +479,7 @@ export const ALL_EXTENSIONS = [UserExtension];
 Replace `@warp-drive-mirror/*` with `@warp-drive/*`. Only needed if mirror packages were used as an intermediate step.
 
 ```bash
-npx ember-data-codemod --target=frontend/app --phases=4
+npx ember-data-to-warp-drive-codemod --target=frontend/app --phases=4
 ```
 
 Handles static `import`, `require()`, and dynamic `import()`.
