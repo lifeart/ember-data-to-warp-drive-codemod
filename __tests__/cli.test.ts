@@ -424,6 +424,8 @@ describe('validateOptions', () => {
       quiet: false,
       strict: false,
       json: false,
+      useTypeChecker: false,
+      tsconfig: '',
       ...overrides,
     };
   }

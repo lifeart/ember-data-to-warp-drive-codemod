@@ -43,6 +43,8 @@ export interface CliOptions {
   quiet: boolean;
   strict: boolean;
   json: boolean;
+  useTypeChecker: boolean;
+  tsconfig: string;
 }
 
 interface ConfigFile {
@@ -75,6 +77,10 @@ const PHASE_DEFINITIONS: PhaseDefinition[] = [
     type: 'jscodeshift',
     transformFile: 'phase-0-deprecation-cleanup',
     getTarget: (opts) => opts.target,
+    getRunnerOptions: (opts) => ({
+      ...(opts.useTypeChecker ? { useTypeChecker: 'true', target: opts.target } : {}),
+      ...(opts.tsconfig ? { tsconfig: opts.tsconfig } : {}),
+    }),
   },
   {
     id: '1',
@@ -158,6 +164,10 @@ export function parseArgs(argv: string[]): Partial<CliOptions> {
       result.strict = true;
     } else if (arg === '--json') {
       result.json = true;
+    } else if (arg === '--useTypeChecker' || arg === '--use-type-checker') {
+      result.useTypeChecker = true;
+    } else if (arg.startsWith('--tsconfig=')) {
+      result.tsconfig = arg.slice('--tsconfig='.length);
     }
   }
 
@@ -235,6 +245,8 @@ export function mergeConfigAndArgs(
     quiet: args.quiet ?? false,
     strict: args.strict ?? false,
     json: args.json ?? false,
+    useTypeChecker: args.useTypeChecker ?? false,
+    tsconfig: args.tsconfig ?? '',
   };
 }
 
