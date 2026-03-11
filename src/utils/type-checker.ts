@@ -9,29 +9,30 @@ import * as fs from 'fs';
  * would be incorrectly transformed.
  */
 
-// Lazily loaded TypeScript module
-let ts: typeof import('typescript') | null = null;
+// Lazily loaded TypeScript module.
+// Uses `undefined` = not yet attempted, `null` = attempted and failed.
+let ts: typeof import('typescript') | null | undefined = undefined;
 
 function loadTypeScript(): typeof import('typescript') | null {
-  if (ts !== null) return ts;
+  if (ts !== undefined) return ts as typeof import('typescript') | null;
   try {
     ts = require('typescript');
-    return ts;
+    return ts as typeof import('typescript');
   } catch {
+    ts = null;
     return null;
   }
 }
 
 /**
  * Known types whose `.get()` / `.set()` methods should NOT be transformed.
- * These are standard Web/JS APIs, not Ember.
+ * Only includes types that actually have `.get(string)` or `.set(string, value)`
+ * signatures that could match the jscodeshift structural check.
  */
 const NON_EMBER_TYPE_NAMES = new Set([
   'Map',
   'WeakMap',
   'ReadonlyMap',
-  'Set',
-  'WeakSet',
   'Headers',
   'FormData',
   'URLSearchParams',
@@ -42,9 +43,6 @@ const NON_EMBER_TYPE_NAMES = new Set([
   'Cache',
   'IDBObjectStore',
   'IDBIndex',
-  'HTMLFormElement',
-  'DOMStringMap',
-  'EventTarget',
 ]);
 
 export interface TypeCheckerService {
@@ -111,34 +109,32 @@ export function createTypeChecker(
     configDir,
   );
 
-  // Check for Glint — try to add .gts/.gjs support
-  let glintTransformManager: GlintTransformManager | null = null;
+  // Check for content-tag — try to add .gts/.gjs support
+  let gtsTransformManager: GtsTransformManager | null = null;
   try {
-    glintTransformManager = createGlintTransformManager(tsModule, configDir);
+    gtsTransformManager = createGtsTransformManager();
   } catch {
-    // Glint not available — that's fine
+    // content-tag not available — .gts/.gjs type checking disabled
   }
 
-  // Build compiler options — add .gts/.gjs if Glint is available
+  // Build compiler options
   const compilerOptions: import('typescript').CompilerOptions = {
     ...parsedConfig.options,
-    // Don't emit anything
     noEmit: true,
-    // Be lenient — we only need type info, not error-free compilation
     skipLibCheck: true,
   };
 
   // Create the program
   let fileNames = parsedConfig.fileNames;
 
-  // If Glint is available, also include .gts/.gjs files
-  if (glintTransformManager) {
+  // If content-tag is available, also include .gts/.gjs files
+  if (gtsTransformManager) {
     const gtsFiles = findGtsFiles(targetDir);
     fileNames = [...fileNames, ...gtsFiles];
   }
 
   // Create a custom compiler host that can handle .gts/.gjs files
-  const host = createCompilerHost(tsModule, compilerOptions, glintTransformManager);
+  const host = createCompilerHost(tsModule, compilerOptions, gtsTransformManager);
 
   let program: import('typescript').Program;
   try {
@@ -155,23 +151,18 @@ export function createTypeChecker(
       try {
         const resolvedPath = path.resolve(filePath);
 
-        // For .gts/.gjs files, we need the virtual .ts path
-        let lookupPath = resolvedPath;
-        if (glintTransformManager && (resolvedPath.endsWith('.gts') || resolvedPath.endsWith('.gjs'))) {
-          lookupPath = resolvedPath; // The host handles the mapping
-        }
+        // For .gts/.gjs files, offsets from jscodeshift (which uses
+        // TEMPLATE_TEMPLATE(...) placeholders) may not match the type checker's
+        // source (which uses the same placeholders via gtsTransformManager).
+        // Both now use the same placeholder format, so offsets are aligned.
 
-        const sourceFile = program.getSourceFile(lookupPath);
+        const sourceFile = program.getSourceFile(resolvedPath);
         if (!sourceFile) {
           return false; // Can't check — fall back to blocklist
         }
 
-        // Find the token at the given position
-        const node = findNodeAtOffset(tsModule, sourceFile, offset);
-        if (!node) return false;
-
-        // Walk up to find the CallExpression
-        const callExpr = findParentCallExpression(tsModule, node);
+        // Find the .get()/.set() CallExpression at the given offset
+        const callExpr = findGetSetCallAtOffset(tsModule, sourceFile, offset);
         if (!callExpr) return false;
 
         // Get the receiver of the .get()/.set() call
@@ -275,16 +266,32 @@ function findNodeAtOffset(
 }
 
 /**
- * Walk up the AST to find a CallExpression parent.
+ * Find the CallExpression at the given offset whose callee is a
+ * PropertyAccessExpression with `.name` being 'get' or 'set'.
+ *
+ * This avoids the bug where `findParentCallExpression` could find an
+ * inner CallExpression (e.g. `getCache()` inside `getCache().get('key')`)
+ * instead of the outer `.get()` call.
  */
-function findParentCallExpression(
+function findGetSetCallAtOffset(
   tsModule: typeof import('typescript'),
-  node: import('typescript').Node,
+  sourceFile: import('typescript').SourceFile,
+  offset: number,
 ): import('typescript').CallExpression | undefined {
+  const node = findNodeAtOffset(tsModule, sourceFile, offset);
+  if (!node) return undefined;
+
+  // Walk up the AST looking for a CallExpression with a .get/.set PropertyAccessExpression
   let current: import('typescript').Node | undefined = node;
   while (current) {
-    if (tsModule.isCallExpression(current)) {
-      return current;
+    if (
+      tsModule.isCallExpression(current) &&
+      tsModule.isPropertyAccessExpression(current.expression)
+    ) {
+      const methodName = current.expression.name.text;
+      if (methodName === 'get' || methodName === 'set') {
+        return current;
+      }
     }
     current = current.parent;
   }
@@ -306,10 +313,10 @@ function getCallReceiver(
 }
 
 // ---------------------------------------------------------------------------
-// Glint support
+// GTS/GJS support via content-tag
 // ---------------------------------------------------------------------------
 
-interface GlintTransformManager {
+interface GtsTransformManager {
   /**
    * Transform a .gts/.gjs source into valid TypeScript for type checking.
    * Returns null if the file cannot be processed.
@@ -318,15 +325,13 @@ interface GlintTransformManager {
 }
 
 /**
- * Try to create a Glint-based transform manager for .gts/.gjs files.
- * Falls back to a simple approach: strip <template> blocks and replace
- * with placeholder code that the TS compiler can parse.
+ * Create a GTS transform manager that uses content-tag to replace <template>
+ * blocks with valid TS placeholders.
+ *
+ * Uses the SAME placeholder format as gts-support.ts (TEMPLATE_TEMPLATE / _TEMPLATE_)
+ * so that byte offsets from jscodeshift match the TS program's source file.
  */
-function createGlintTransformManager(
-  _tsModule: typeof import('typescript'),
-  _configDir: string,
-): GlintTransformManager | null {
-  // Try to load content-tag for parsing <template> blocks
+function createGtsTransformManager(): GtsTransformManager | null {
   let Preprocessor: any;
   try {
     Preprocessor = require('content-tag').Preprocessor;
@@ -344,21 +349,25 @@ function createGlintTransformManager(
           return source;
         }
 
-        // Replace <template> blocks with valid TS placeholders
-        // We reuse the same approach as gts-support.ts
+        // Replace <template> blocks with the SAME placeholders as gts-support.ts
+        // so that byte offsets from jscodeshift align with the TS source file.
         let result = source;
         for (let i = parsed.length - 1; i >= 0; i--) {
           const p = parsed[i];
           const startByte = p.range.startByte ?? p.range.start;
           const endByte = p.range.endByte ?? p.range.end;
 
+          const contentStart = p.contentRange.start ?? p.contentRange.startByte;
+          const contentEnd = p.contentRange.end ?? p.contentRange.endByte;
+          const content = source.slice(contentStart, contentEnd);
+
+          const escapedContent = content.replace(/`/g, '\\`').replace(/\$/g, '\\$');
+
           let placeholder: string;
           if (p.type === 'expression') {
-            // Module-level <template> — replace with empty export
-            placeholder = `({} as any)`;
+            placeholder = `TEMPLATE_TEMPLATE(\`${escapedContent}\`)`;
           } else {
-            // Class member <template> — replace with property
-            placeholder = `__template = ({} as any);`;
+            placeholder = `[_TEMPLATE_(\`${escapedContent}\`)] = 0;`;
           }
 
           result = result.slice(0, startByte) + placeholder + result.slice(endByte);
@@ -378,26 +387,26 @@ function createGlintTransformManager(
 function createCompilerHost(
   tsModule: typeof import('typescript'),
   options: import('typescript').CompilerOptions,
-  glintTransformManager: GlintTransformManager | null,
+  gtsTransformManager: GtsTransformManager | null,
 ): import('typescript').CompilerHost {
   const defaultHost = tsModule.createCompilerHost(options);
 
   return {
     ...defaultHost,
     fileExists(fileName: string): boolean {
-      if (glintTransformManager && (fileName.endsWith('.gts') || fileName.endsWith('.gjs'))) {
+      if (gtsTransformManager && (fileName.endsWith('.gts') || fileName.endsWith('.gjs'))) {
         return fs.existsSync(fileName);
       }
       return defaultHost.fileExists(fileName);
     },
     getSourceFile(fileName, languageVersion, onError?, shouldCreateNewSourceFile?) {
       if (
-        glintTransformManager &&
+        gtsTransformManager &&
         (fileName.endsWith('.gts') || fileName.endsWith('.gjs'))
       ) {
         try {
           const rawSource = fs.readFileSync(fileName, 'utf-8');
-          const transformed = glintTransformManager.transformGtsSource(fileName, rawSource);
+          const transformed = gtsTransformManager.transformGtsSource(fileName, rawSource);
           if (transformed) {
             return tsModule.createSourceFile(fileName, transformed, languageVersion, true);
           }
@@ -466,4 +475,11 @@ export function getOrCreateTypeChecker(
   const checker = createTypeChecker(targetDir, tsconfigPath);
   options[TYPE_CHECKER_KEY] = checker;
   return checker;
+}
+
+/**
+ * Reset the module-level TypeScript cache. For testing only.
+ */
+export function _resetTypeScriptCache(): void {
+  ts = undefined;
 }

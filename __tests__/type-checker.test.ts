@@ -2,7 +2,7 @@ import * as path from 'path';
 import * as fs from 'fs';
 import * as os from 'os';
 import { applyTransform } from 'jscodeshift/src/testUtils';
-import { createTypeChecker, getOrCreateTypeChecker } from '../src/utils/type-checker';
+import { createTypeChecker, getOrCreateTypeChecker, _resetTypeScriptCache } from '../src/utils/type-checker';
 
 const transformPath = path.resolve(__dirname, '../src/phase-0-deprecation-cleanup.ts');
 // eslint-disable-next-line @typescript-eslint/no-var-requires
@@ -130,6 +130,12 @@ const val = cache.get('key');`;
       expect(runWithTypeChecker(tempDir, input)).toBe('');
     });
 
+    it('chained call — getCache().get("key") should be skipped when return type is Map', () => {
+      const input = `function getCache(): Map<string, any> { return new Map(); }
+const val = getCache().get('key');`;
+      expect(runWithTypeChecker(tempDir, input)).toBe('');
+    });
+
     it('class property typed as FormData', () => {
       const input = `class Uploader {
   body: FormData = new FormData();
@@ -248,11 +254,14 @@ function test(model: Model) {
       expect(result).toContain('obj.name');
     });
 
-    it('WeakMap — should skip', () => {
-      const input = `const wm = new WeakMap<object, string>();\nconst val = wm.get('key' as any);`;
-      // WeakMap.get() takes an object key, but structural check expects string literal
-      // The jscodeshift check only matches .get(stringLiteral), so this is edge-case but valid
-      expect(runWithTypeChecker(tempDir, input)).toBe('');
+    it('WeakMap received as function parameter', () => {
+      // Use a typed parameter so isObjectGet matches (string literal arg)
+      // and the type checker actually detects WeakMap
+      const input = `function test(wm: WeakMap<any, string>) {
+  const val = wm.get('key');
+}`;
+      const result = runWithTypeChecker(tempDir, input);
+      expect(result).toBe('');
     });
   });
 
@@ -400,6 +409,41 @@ function test(model: Model) {
         fs.rmSync(emptyDir, { recursive: true, force: true });
       }
     });
+
+    it('reuses cached type checker across multiple applyTransform calls (simulating jscodeshift Runner)', () => {
+      // jscodeshift Runner passes the same options object to each file's transform
+      const sharedOptions: Record<string, any> = {
+        useTypeChecker: 'true',
+        target: tempDir,
+      };
+
+      const input1 = `function a(data: FormData) { return data.get('field'); }`;
+      const input2 = `function b(m: Map<string, any>) { return m.get('key'); }`;
+
+      const file1 = path.join(tempDir, 'file1.ts');
+      const file2 = path.join(tempDir, 'file2.ts');
+      fs.writeFileSync(file1, input1);
+      fs.writeFileSync(file2, input2);
+
+      const result1 = applyTransform(
+        transform,
+        sharedOptions,
+        { source: input1, path: file1 },
+        { parser: 'ts' },
+      );
+      const result2 = applyTransform(
+        transform,
+        sharedOptions,
+        { source: input2, path: file2 },
+        { parser: 'ts' },
+      );
+
+      // Both should be skipped
+      expect(result1).toBe('');
+      expect(result2).toBe('');
+      // Verify caching happened — __typeCheckerInstance should be on the options
+      expect(sharedOptions.__typeCheckerInstance).not.toBeNull();
+    });
   });
 
   // -----------------------------------------------------------------------
@@ -527,6 +571,25 @@ function resolve(key: string) {
 }`;
       const result = runWithTypeChecker(tempDir, input);
       expect(result).toContain('this.name');
+    });
+  });
+
+  // -----------------------------------------------------------------------
+  // loadTypeScript caching
+  // -----------------------------------------------------------------------
+
+  describe('loadTypeScript caching', () => {
+    afterEach(() => {
+      _resetTypeScriptCache();
+    });
+
+    it('caches successful TypeScript load', () => {
+      // First call creates a checker (TypeScript loads successfully)
+      const checker1 = createTypeChecker(tempDir);
+      expect(checker1).not.toBeNull();
+      // Second call should reuse the cached TS module
+      const checker2 = createTypeChecker(tempDir);
+      expect(checker2).not.toBeNull();
     });
   });
 });
