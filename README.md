@@ -77,8 +77,8 @@ npx ember-data-to-warp-drive-codemod --target=frontend/app --appName=myapp
 | `--strict` | Exit with error if any phase has errors | `false` |
 | `--json` | Machine-readable JSON output (for CI) | `false` |
 | `--post-check` | Run post-migration diagnostic scanner instead of codemods | `false` |
-| `--useTypeChecker` | Use TypeScript type-checker to prevent false positive `.get()`/`.set()` transforms (Phase 0) | `false` |
-| `--tsconfig` | Explicit path to `tsconfig.json` (used with `--useTypeChecker`) | auto-detected |
+| `--useTypeChecker` | Use TypeScript type-checker to prevent false positive `.get()`/`.set()` transforms (Phase 0). CLI-only. | `false` |
+| `--tsconfig` | Explicit path to `tsconfig.json` (used with `--useTypeChecker`). CLI-only. | auto-detected |
 
 ### Config File (`.codemodrc.json`)
 
@@ -552,13 +552,14 @@ npm test
     ├── fixtures/                   Before/after .input.ts/.output.ts pairs
     ├── cli.test.ts                 CLI wrapper + reporter tests
     ├── post-check.test.ts          Post-migration checker tests
-    ├── phase-0.test.ts             69 tests
-    ├── phase-1.test.ts             73 tests
-    ├── phase-2a.test.ts            17 tests
-    ├── phase-3a.test.ts            51 tests
-    ├── phase-3b.test.ts            10 tests
-    ├── phase-4.test.ts             12 tests
-    └── utils.test.ts               97 tests
+    ├── type-checker.test.ts        Type-checker integration tests
+    ├── phase-0.test.ts             96 tests
+    ├── phase-1.test.ts             69 tests
+    ├── phase-2a.test.ts            16 tests
+    ├── phase-3a.test.ts            88 tests
+    ├── phase-3b.test.ts            24 tests
+    ├── phase-4.test.ts             16 tests
+    └── utils.test.ts               89 tests
 ```
 
 ### Architecture
