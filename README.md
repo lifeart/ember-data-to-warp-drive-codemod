@@ -77,6 +77,8 @@ npx ember-data-to-warp-drive-codemod --target=frontend/app --appName=myapp
 | `--strict` | Exit with error if any phase has errors | `false` |
 | `--json` | Machine-readable JSON output (for CI) | `false` |
 | `--post-check` | Run post-migration diagnostic scanner instead of codemods | `false` |
+| `--useTypeChecker` | Use TypeScript type-checker to prevent false positive `.get()`/`.set()` transforms (Phase 0). CLI-only. | `false` |
+| `--tsconfig` | Explicit path to `tsconfig.json` (used with `--useTypeChecker`). CLI-only. | auto-detected |
 
 ### Config File (`.codemodrc.json`)
 
@@ -518,7 +520,7 @@ After running all phases, these tasks require manual work:
 npm test
 ```
 
-**518+ tests** across 9 test suites covering all phases, utilities, CLI wrapper, and post-migration checker.
+**600+ tests** across 10 test suites covering all phases, utilities, CLI wrapper, post-migration checker, and type-checker integration.
 
 > **Tip**: Some chained patterns like `items.filterBy('active').sortBy('name')` may require running Phase 0 twice, since jscodeshift processes outer call expressions first.
 
@@ -534,6 +536,7 @@ npm test
 │   │   ├── schema-builder.ts       buildSchemaFile, buildModelStub
 │   │   ├── ember-apis.ts           Pattern matchers (isSortBy, isMapBy, ...)
 │   │   ├── gts-support.ts          .gts/.gjs <template> extraction
+│   │   ├── type-checker.ts         Optional TS type-checker for .get()/.set() guards
 │   │   └── reporter.ts             Phase summary + grand summary reporting
 │   │
 │   ├── cli.ts                            CLI wrapper — single command migration
@@ -549,13 +552,14 @@ npm test
     ├── fixtures/                   Before/after .input.ts/.output.ts pairs
     ├── cli.test.ts                 CLI wrapper + reporter tests
     ├── post-check.test.ts          Post-migration checker tests
-    ├── phase-0.test.ts             69 tests
-    ├── phase-1.test.ts             73 tests
-    ├── phase-2a.test.ts            17 tests
-    ├── phase-3a.test.ts            51 tests
-    ├── phase-3b.test.ts            10 tests
-    ├── phase-4.test.ts             12 tests
-    └── utils.test.ts               97 tests
+    ├── type-checker.test.ts        Type-checker integration tests
+    ├── phase-0.test.ts             96 tests
+    ├── phase-1.test.ts             69 tests
+    ├── phase-2a.test.ts            16 tests
+    ├── phase-3a.test.ts            88 tests
+    ├── phase-3b.test.ts            24 tests
+    ├── phase-4.test.ts             16 tests
+    └── utils.test.ts               89 tests
 ```
 
 ### Architecture
@@ -617,7 +621,7 @@ npm test
 
 | Feature | Description |
 |---------|-------------|
-| **False positive guards** | `obj.get()` / `obj.set()` skip non-Ember receivers (Map, URLSearchParams, Headers, FormData, etc.) and `new` expressions. `.toArray()` skips `new` expression receivers. |
+| **False positive guards** | `obj.get()` / `obj.set()` skip non-Ember receivers (Map, URLSearchParams, Headers, FormData, etc.) and `new` expressions. `.toArray()` skips `new` expression receivers. Optional `--useTypeChecker` flag uses the TypeScript compiler API for type-aware detection (catches arbitrarily-named variables like `const fd = new FormData(); fd.get('x')`). |
 | **Side-effect safety** | `isEmpty()`, `isPresent()`, `removeObject`, `removeObjects`, `setProperties` detect side-effectful arguments and wrap in IIFEs or hoist to temp variables. |
 | **Invalid identifiers** | Property names like `some-prop` use computed access (`this['some-prop']`). `sortBy`/`mapBy`/`filterBy`/`findBy` skip transforms when key is not a valid JS identifier. |
 | **Return values** | `pushObject` preserves return value (the item) via comma operator. `removeObject`/`removeObjects`/`pushObjects` return the array in expression context. |

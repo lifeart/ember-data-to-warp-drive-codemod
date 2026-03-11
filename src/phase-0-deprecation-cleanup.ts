@@ -34,6 +34,7 @@ import {
 } from './utils/ember-apis';
 import { removeImport, addImport } from './utils/imports';
 import { withGtsSupport } from './utils/gts-support';
+import { getOrCreateTypeChecker } from './utils/type-checker';
 
 /**
  * Deep-clone an AST node to avoid reusing the same reference in multiple
@@ -77,6 +78,9 @@ function transformer(
   const j = api.jscodeshift;
   const root = j(fileInfo.source);
   let changed = false;
+
+  // Lazily initialize the type checker (cached across files via options)
+  const typeChecker = getOrCreateTypeChecker(_options);
 
   // Check if functional get/set are imported from @ember/object.
   // Resolve local names to handle aliased imports like `import { get as emberGet } from '@ember/object'`.
@@ -166,6 +170,10 @@ function transformer(
     // #3c: obj.get('prop') → obj.prop / obj.a?.b (non-this receiver)
     const objGet = isObjectGet(j, node);
     if (objGet) {
+      // Type-checker guard: skip if receiver is a known non-Ember type (e.g. FormData, Map)
+      if (typeChecker && (node as any).start != null) {
+        if (typeChecker.shouldSkipReceiver(fileInfo.path, (node as any).start)) return;
+      }
       const { receiver, propPath } = objGet;
       if (propPath.includes('.')) {
         const parts = propPath.split('.');
@@ -234,6 +242,10 @@ function transformer(
     // #3f: obj.set('prop', val) → obj.prop = val (non-this receiver)
     const objSet = isObjectSet(j, node);
     if (objSet) {
+      // Type-checker guard: skip if receiver is a known non-Ember type (e.g. Map, Headers)
+      if (typeChecker && (node as any).start != null) {
+        if (typeChecker.shouldSkipReceiver(fileInfo.path, (node as any).start)) return;
+      }
       const left = isValidIdentifier(objSet.propName)
         ? j.memberExpression(objSet.receiver, j.identifier(objSet.propName))
         : j.memberExpression(objSet.receiver, j.stringLiteral(objSet.propName), true);

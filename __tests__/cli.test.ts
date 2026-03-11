@@ -107,6 +107,21 @@ describe('parseArgs', () => {
     expect(result.json).toBeUndefined();
   });
 
+  it('should parse --useTypeChecker flag', () => {
+    const result = parseArgs(['--useTypeChecker']);
+    expect(result.useTypeChecker).toBe(true);
+  });
+
+  it('should parse --use-type-checker flag (kebab-case)', () => {
+    const result = parseArgs(['--use-type-checker']);
+    expect(result.useTypeChecker).toBe(true);
+  });
+
+  it('should parse --tsconfig', () => {
+    const result = parseArgs(['--tsconfig=./tsconfig.app.json']);
+    expect(result.tsconfig).toBe('./tsconfig.app.json');
+  });
+
   it('should ignore unknown flags', () => {
     const result = parseArgs(['--unknown=value', '--target=app']);
     expect(result.target).toBe('app');
@@ -424,6 +439,8 @@ describe('validateOptions', () => {
       quiet: false,
       strict: false,
       json: false,
+      useTypeChecker: false,
+      tsconfig: '',
       ...overrides,
     };
   }
